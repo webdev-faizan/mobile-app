@@ -55,7 +55,7 @@ workflows:
       - name: Generate Native Code
         script: |
           echo "--- Generating Native Projects ---"
-          npx expo prebuild --platform all --non-interactive --clean
+          CI=1 npx expo prebuild --platform all --clean
           
           echo "--- Verifying generated files ---"
           ls -la ios/
@@ -66,7 +66,6 @@ workflows:
           echo "--- Building iOS Project Directly ---"
           mkdir -p build_logs/ios
           
-          # Build directly with xcodeproj (no CocoaPods)
           set -o pipefail && xcodebuild \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
