@@ -1,7 +1,7 @@
 workflows:
   expo-android-development:
     name: Expo Android Development Build
-    instance_type: linux_xlarge
+    instance_type: mac_mini_m2
     working_directory: .
     environment:
       vars:
