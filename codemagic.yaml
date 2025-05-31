@@ -1,36 +1,28 @@
 workflows:
   expo-multi-platform-development:
     name: Expo Multi-Platform Development Build
-    instance_type: mac_mini_m2  # Required for iOS builds (Android can also build on macOS)
+    instance_type: mac_mini_m2
     working_directory: .
     environment:
       vars:
-        # iOS Config
         XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
         IOS_BUNDLE_ID: "com.anonymous.simpleiostodo"
-        
-        # Android Config
-        ANDROID_PACKAGE: "com.anonymous.simpleiostodo"  # Update if different from iOS
+        ANDROID_PACKAGE: "com.anonymous.simpleiostodo"
         BUILD_NUMBER: "1"
       node: 20
-      xcode: 15.0  # Required for iOS
-      cocoapods: default  # Required for iOS
-      java: 17  # Required for Android
+      xcode: 15.0
+      cocoapods: default
+      java: 17
 
     cache:
       cache_paths:
-        # Shared caches
         - node_modules
         - .yarn/cache
         - .yarn/install-state.gz
         - .yarn/unplugged
-
-        # iOS-specific caches
         - ~/Library/Caches/CocoaPods
         - ios/Pods
-
-        # Android-specific caches
         - ~/.gradle/caches
         - android/.gradle
 
@@ -51,14 +43,12 @@ workflows:
           yarn -v
           echo "--- npm version ---"
           npm -v
-          echo "--- Xcode version (macOS only) ---"
-          xcodebuild -version || echo "Xcode not available (Linux)"
+          echo "--- Xcode version ---"
+          xcodebuild -version
           echo "--- Java version ---"
           java -version
-          echo "--- Android SDK version ---"
-          sdkmanager --version || echo "Android SDK not available (macOS-only mode)"
-          echo "--- CocoaPods version (macOS only) ---"
-          pod --version || echo "CocoaPods not available (Linux)"
+          echo "--- CocoaPods version ---"
+          pod --version
 
       - name: Install Dependencies
         script: |
@@ -74,10 +64,16 @@ workflows:
           echo "--- EAS CLI version ---"
           npx eas-cli --version
 
+      - name: Update iOS Deployment Target
+        script: |
+          echo "--- Updating iOS Deployment Target ---"
+          sed -i '' "s/platform :ios, .*/platform :ios, '13.0'/" ios/Podfile
+          cat ios/Podfile | grep "platform :ios"
+
       - name: Expo Prebuild (iOS & Android)
         script: |
           echo "--- Generating Native Code for Both Platforms ---"
-          npx expo prebuild --platform all --non-interactive
+          npx expo prebuild --platform all --non-interactive --clean
           echo "--- iOS Prebuild Contents ---"
           ls -la ios/
           echo "--- Android Prebuild Contents ---"
@@ -95,6 +91,7 @@ workflows:
       - name: Build iOS Development Version
         script: |
           echo "--- Building iOS Debug Version ---"
+          cd ios
           set -o pipefail && xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
@@ -112,8 +109,9 @@ workflows:
             -configuration Debug \
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
-            | tee ios_build.log
+            | tee ../ios_build.log
 
+          cd ..
           mkdir -p build_logs
           mv ios_build.log build_logs/
 
@@ -126,7 +124,6 @@ workflows:
           echo "--- APK Location ---"
           find android/app/build/outputs/apk -name "*.apk" | xargs ls -la
 
-          # Save APK as artifact
           mkdir -p artifacts
           find android/app/build/outputs/apk -name "*.apk" -exec cp {} artifacts/ \;
 
