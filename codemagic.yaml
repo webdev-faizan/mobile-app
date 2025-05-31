@@ -209,7 +209,7 @@ workflows:
         XCODE_SCHEME: "swiftly"
         BUNDLE_ID: "io.codemagic.cmswiftly"
         APP_STORE_APP_ID: 1570610860
-      xcode: 14.3
+      xcode: 15.2 
       cocoapods: default
     triggering:
       events:
