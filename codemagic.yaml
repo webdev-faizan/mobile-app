@@ -43,6 +43,7 @@ workflows:
           export NODE_OPTIONS=--max_old_space_size=4096
           export LANG=en_US.UTF-8
           export LC_ALL=en_US.UTF-8
+          export CI=1
 
       - name: Clean Workspace
         script: |
@@ -50,6 +51,7 @@ workflows:
           rm -rf ios/build
           rm -rf ios_simulator_build
           rm -f ios-simulator-build.tar.gz
+          rm -rf ios/
           find . -name "*.log" -delete
           # Clear derived data
           rm -rf ~/Library/Developer/Xcode/DerivedData/*
@@ -64,13 +66,13 @@ workflows:
       - name: Setup Expo CLI
         script: |
           echo "--- Setting up Expo CLI ---"
-          npm install -g @expo/cli@6.4.1 --no-audit --fund=false --omit=optional
+          npm install -g @expo/cli@latest --no-audit --fund=false --omit=optional
           npx expo --version
 
       - name: Prebuild iOS Project
         script: |
           echo "--- Running expo prebuild ---"
-          npx expo prebuild --platform ios --non-interactive --clear
+          npx expo prebuild --platform ios
           
           echo "--- Verifying prebuild files ---"
           [ -d "ios/simple-ios-todo.xcworkspace" ] || (echo "Workspace not found" && exit 1)
@@ -150,4 +152,3 @@ workflows:
         notify:
           success: true
           failure: true
-    
