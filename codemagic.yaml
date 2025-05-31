@@ -26,7 +26,7 @@ workflows:
       events:
         - push
       branch_patterns:
-        - pattern: "master*"  # Changed to trigger on development branches
+        - pattern: "master*"
           include: true
           source: true
 
@@ -39,6 +39,10 @@ workflows:
           yarn -v
           echo "--- npm version ---"
           npm -v
+          echo "--- Xcode version ---"
+          xcodebuild -version
+          echo "--- CocoaPods version ---"
+          pod --version
 
       - name: Install Dependencies
         script: |
@@ -58,6 +62,8 @@ workflows:
         script: |
           echo "--- Generating iOS Native Code ---"
           npx expo prebuild --platform ios --non-interactive
+          echo "--- Prebuild contents verification ---"
+          ls -la ios/
 
       - name: Install CocoaPods
         script: |
@@ -65,15 +71,39 @@ workflows:
           cd ios
           pod install --repo-update --verbose
           cd ..
+          echo "--- Pods directory contents ---"
+          ls -la ios/Pods/
 
       - name: Build Development Version
         script: |
           echo "--- Building Development Version ---"
-          xcode-project build \
-            --workspace "$XCODE_WORKSPACE" \
-            --scheme "$XCODE_SCHEME" \
-            --configuration "Debug" \
-            --disable-codesigning
+          set -o pipefail && xcodebuild \
+            -workspace "$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -quiet \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            | xcpretty
+
+          # Alternative approach if the above fails
+          echo "--- Fallback: Detailed build logs ---"
+          xcodebuild \
+            -workspace "$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild.log
+
+          # Save the full build logs as artifact
+          mkdir -p build_logs
+          mv xcodebuild.log build_logs/
+
+    artifacts:
+      - build_logs/xcodebuild.log
+      - ios/build/**/*.log
 
     publishing:
       email:
