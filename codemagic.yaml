@@ -5,10 +5,8 @@ workflows:
     working_directory: .
     environment:
       vars:
-        # iOS specific vars
-        XCODE_WORKSPACE: "ios/SimpleTodo.xcworkspace"
-        XCODE_SCHEME: "SimpleTodo"
-        BUNDLE_ID: "com.anonymous.simpletodo"
+        # Will be set dynamically after prebuild
+        BUNDLE_ID: "com.anonymous.simpleiostodo"
         BUILD_NUMBER: "1"
         
         # Android specific vars
@@ -74,6 +72,29 @@ workflows:
           echo "--- Prebuild contents verification ---"
           ls -la ios/
           ls -la android/
+          
+          echo "--- Finding iOS workspace and scheme ---"
+          # Find the actual workspace file
+          WORKSPACE_FILE=$(find ios -name "*.xcworkspace" -type d | head -1)
+          if [ -z "$WORKSPACE_FILE" ]; then
+            echo "Error: No .xcworkspace file found"
+            exit 1
+          fi
+          
+          # Extract workspace name
+          WORKSPACE_NAME=$(basename "$WORKSPACE_FILE")
+          echo "Found workspace: $WORKSPACE_NAME"
+          
+          # Find the scheme name from the xcworkspace
+          SCHEME_NAME=$(ls ios/*.xcodeproj 2>/dev/null | head -1 | xargs basename -s .xcodeproj || echo "simpleiostodo")
+          echo "Using scheme: $SCHEME_NAME"
+          
+          # Export for use in subsequent steps
+          echo "export XCODE_WORKSPACE=\"$WORKSPACE_FILE\"" >> $CM_ENV
+          echo "export XCODE_SCHEME=\"$SCHEME_NAME\"" >> $CM_ENV
+          
+          echo "Workspace path: $WORKSPACE_FILE"
+          echo "Scheme name: $SCHEME_NAME"
 
       - name: Install CocoaPods (iOS)
         script: |
@@ -83,10 +104,29 @@ workflows:
           cd ..
           echo "--- Pods directory contents ---"
           ls -la ios/Pods/
+          
+          echo "--- Verifying workspace after pod install ---"
+          echo "Using workspace: $XCODE_WORKSPACE"
+          echo "Using scheme: $XCODE_SCHEME"
 
       - name: Build iOS Debug Version
         script: |
           echo "--- Building iOS Debug Version ---"
+          echo "Workspace: $XCODE_WORKSPACE"
+          echo "Scheme: $XCODE_SCHEME"
+          
+          # Verify the workspace exists
+          if [ ! -d "$XCODE_WORKSPACE" ]; then
+            echo "Error: Workspace $XCODE_WORKSPACE does not exist"
+            echo "Available files in ios directory:"
+            ls -la ios/
+            exit 1
+          fi
+          
+          # Create build logs directory
+          mkdir -p build_logs/ios
+          
+          # Build with proper error handling
           set -o pipefail && xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
@@ -95,11 +135,12 @@ workflows:
             -quiet \
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
-            | xcpretty
-
-          # Save logs if the build fails
-          mkdir -p build_logs/ios
-          mv /var/folders/*/T/ResultBundle_* build_logs/ios/ || true
+            | tee build_logs/ios/xcodebuild.log | xcpretty
+          
+          # Save result bundle if it exists
+          if ls /var/folders/*/T/ResultBundle_* 1> /dev/null 2>&1; then
+            mv /var/folders/*/T/ResultBundle_* build_logs/ios/ || true
+          fi
 
       - name: Build Android Debug Version
         script: |
