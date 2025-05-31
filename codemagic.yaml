@@ -37,7 +37,7 @@ workflows:
           echo "Xcode version: $(xcodebuild -version | head -n 1)"
           echo "CocoaPods version: $(pod --version)"
           echo "System architecture: $(uname -m)"
-          echo "Available memory: $(sysctl -n hw.memsize | awk '{print $0/1073741824" GB"}')"
+          echo "Available memory: $(sysctl -n hw.memsize | awk '{print $0/1073741824\" GB\"}')"
 
       - name: Clean Workspace
         script: |
@@ -120,17 +120,10 @@ workflows:
           echo "--- Build verified successfully ---"
 
     artifacts:
-      - name: iOS Simulator Build
-        paths:
-          - ios_simulator_build/*.app
-          - ios-simulator-build.tar.gz
-        expire_in: 7 days
-      
-      - name: Build Logs
-        paths:
-          - ios/build/**/*.log
-          - xcodebuild.log
-        expire_in: 3 days
+      - ios_simulator_build/*.app
+      - ios-simulator-build.tar.gz
+      - ios/build/**/*.log
+      - xcodebuild.log
 
     publishing:
       email:
@@ -145,5 +138,3 @@ workflows:
         notify:
           success: true
           failure: true
-        on_success_message: "iOS Simulator build succeeded :white_check_mark:"
-        on_failure_message: "iOS Simulator build failed :x:"
