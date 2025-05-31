@@ -37,7 +37,12 @@ workflows:
           echo "Xcode version: $(xcodebuild -version | head -n 1)"
           echo "CocoaPods version: $(pod --version)"
           echo "System architecture: $(uname -m)"
-          echo "Available memory: $(sysctl -n hw.memsize | awk '{print $0/1073741824\" GB\"}')"
+          echo "Available memory: $(sysctl -n hw.memsize | awk '{print $0/1073741824" GB"}')"
+          
+          # Set environment variables
+          export NODE_OPTIONS=--max_old_space_size=4096
+          export LANG=en_US.UTF-8
+          export LC_ALL=en_US.UTF-8
 
       - name: Clean Workspace
         script: |
@@ -46,6 +51,8 @@ workflows:
           rm -rf ios_simulator_build
           rm -f ios-simulator-build.tar.gz
           find . -name "*.log" -delete
+          # Clear derived data
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*
 
       - name: Install Dependencies
         script: |
@@ -63,11 +70,12 @@ workflows:
       - name: Prebuild iOS Project
         script: |
           echo "--- Running expo prebuild ---"
-          npx expo prebuild --platform ios --non-interactive
+          npx expo prebuild --platform ios --non-interactive --clear
           
           echo "--- Verifying prebuild files ---"
           [ -d "ios/simple-ios-todo.xcworkspace" ] || (echo "Workspace not found" && exit 1)
           [ -f "ios/Podfile" ] || (echo "Podfile not found" && exit 1)
+          [ -f "ios/simple-ios-todo.xcodeproj/project.pbxproj" ] || (echo "Xcode project not found" && exit 1)
 
       - name: Install CocoaPods
         script: |
@@ -82,6 +90,14 @@ workflows:
           echo "--- Building for iOS Simulator ---"
           set -o pipefail
           
+          # Clear xcodebuild cache
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*
+          
+          xcodebuild clean \
+            -workspace "ios/simple-ios-todo.xcworkspace" \
+            -scheme "simple-ios-todo" \
+            -configuration Debug
+
           xcodebuild \
             -workspace "ios/simple-ios-todo.xcworkspace" \
             -scheme "simple-ios-todo" \
@@ -100,8 +116,10 @@ workflows:
           echo "--- Packaging build artifacts ---"
           mkdir -p ios_simulator_build
           
-          if [ -d "ios/build/Build/Products/Debug-iphonesimulator/simple-ios-todo.app" ]; then
-            cp -R ios/build/Build/Products/Debug-iphonesimulator/simple-ios-todo.app ios_simulator_build/
+          APP_PATH=$(find ios/build/Build/Products/Debug-iphonesimulator -name "*.app" -print -quit)
+          
+          if [ -d "$APP_PATH" ]; then
+            cp -R "$APP_PATH" ios_simulator_build/
             tar -czf ios-simulator-build.tar.gz -C ios_simulator_build .
             echo "--- Artifact sizes ---"
             du -sh ios_simulator_build/*.app
@@ -116,7 +134,7 @@ workflows:
         script: |
           echo "--- Build verification ---"
           [ -f "ios-simulator-build.tar.gz" ] || (echo "Tar archive not found" && exit 1)
-          tar -ztvf ios-simulator-build.tar.gz | grep "simple-ios-todo.app/" || (echo "App not in archive" && exit 1)
+          tar -ztvf ios-simulator-build.tar.gz | grep ".app/" || (echo "App not in archive" && exit 1)
           echo "--- Build verified successfully ---"
 
     artifacts:
@@ -136,5 +154,7 @@ workflows:
         channel: "#build-notifications"
         notify_on_build_start: true
         notify:
-          success: true
-          failure: true
+          success: 
+            message: "✅ iOS Simulator build succeeded! Download artifacts from: $CM_ARTIFACT_LINKS"
+          failure:
+            message: "❌ iOS Simulator build failed! Check logs: $CM_BUILD_URL"
