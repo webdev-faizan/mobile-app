@@ -9,7 +9,7 @@ workflows:
         XCODE_SCHEME: "simple-ios-todo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
       node: 22
-      xcode: 16.0
+      xcode: 15.0
       cocoapods: default
 
     cache:
@@ -34,7 +34,11 @@ workflows:
         script: |
           echo "--- Installing dependencies with Yarn Classic ---"
           yarn install --network-timeout 600000
-          yarn global add expo-cli eas-cli
+
+      - name: Install EAS CLI
+        script: |
+          echo "--- Installing EAS CLI globally ---"
+          npm install -g eas-cli@latest
 
       - name: Expo Prebuild
         script: |
