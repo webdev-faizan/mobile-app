@@ -9,6 +9,8 @@ workflows:
         BUILD_NUMBER: "1"
         ANDROID_PROJECT_DIR: "android"
         ANDROID_BUILD_TYPE: "Debug"
+        XCODE_WORKSPACE: "ios/simpleiostodo.xcworkspace"
+        XCODE_SCHEME: "simpleiostodo"
       node: 20
       xcode: 15.0
       cocoapods: default
@@ -68,46 +70,68 @@ workflows:
           npx expo prebuild --platform all --non-interactive --clean
           echo "--- Prebuild contents verification ---"
           ls -la ios/
-          
-          # Set default workspace and scheme names
-          echo "export XCODE_WORKSPACE=\"ios/simpleiostodo.xcworkspace\"" >> $CM_ENV
-          echo "export XCODE_SCHEME=\"simpleiostodo\"" >> $CM_ENV
-          
-          echo "Using workspace: ios/simpleiostodo.xcworkspace"
-          echo "Using scheme: simpleiostodo"
 
       - name: Install CocoaPods (iOS)
         script: |
           echo "--- Installing Pods ---"
           cd ios
+          
+          # Clean any existing installation
+          rm -rf Pods Podfile.lock
+          
+          # Install pods
           pod install --repo-update --verbose
           cd ..
+          
           echo "--- Pods directory contents ---"
           ls -la ios/Pods/
+          
+          echo "--- iOS directory after pod install ---"
+          ls -la ios/
+          
+          # Verify workspace was created
+          if [ -d "ios/simpleiostodo.xcworkspace" ]; then
+            echo "✅ Workspace found: ios/simpleiostodo.xcworkspace"
+          else
+            echo "❌ Workspace not found, checking for xcodeproj"
+            if [ -d "ios/simpleiostodo.xcodeproj" ]; then
+              echo "Found xcodeproj, will use that instead"
+              echo "XCODE_PROJECT=ios/simpleiostodo.xcodeproj" >> $CM_ENV
+              echo "USE_PROJECT=true" >> $CM_ENV
+            else
+              echo "No valid Xcode project found!"
+              exit 1
+            fi
+          fi
 
       - name: Build iOS Debug Version
         script: |
           echo "--- Building iOS Debug Version ---"
-          echo "Using workspace: $XCODE_WORKSPACE"
-          echo "Using scheme: $XCODE_SCHEME"
           
-          # Verify workspace exists
-          if [ ! -d "$XCODE_WORKSPACE" ]; then
-            echo "Error: Workspace not found at $XCODE_WORKSPACE"
-            echo "Current directory contents:"
-            pwd
-            ls -la
-            echo "iOS directory contents:"
-            ls -la ios/
-            exit 1
-          fi
+          # Verify what we're working with
+          echo "iOS directory contents:"
+          ls -la ios/
           
           # Create build logs directory
           mkdir -p build_logs/ios
           
+          # Determine build target
+          if [ "$USE_PROJECT" = "true" ] && [ -d "$XCODE_PROJECT" ]; then
+            echo "Using Xcode project: $XCODE_PROJECT"
+            BUILD_TARGET="-project $XCODE_PROJECT"
+          elif [ -d "$XCODE_WORKSPACE" ]; then
+            echo "Using workspace: $XCODE_WORKSPACE"
+            BUILD_TARGET="-workspace $XCODE_WORKSPACE"
+          else
+            echo "Error: No valid workspace or project found"
+            echo "Workspace path: $XCODE_WORKSPACE"
+            echo "Project path: $XCODE_PROJECT"
+            exit 1
+          fi
+          
           # Run the build
           set -o pipefail && xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
+            $BUILD_TARGET \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
