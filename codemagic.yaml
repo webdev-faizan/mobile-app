@@ -1,26 +1,39 @@
 workflows:
-  expo-ios-development:
-    name: Expo iOS Development Build
-    instance_type: mac_mini_m2
+  expo-multi-platform-development:
+    name: Expo Multi-Platform Development Build
+    instance_type: mac_mini_m2  # Required for iOS builds (Android can also build on macOS)
     working_directory: .
     environment:
       vars:
+        # iOS Config
         XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
-        BUNDLE_ID: "com.anonymous.simpleiostodo"
+        IOS_BUNDLE_ID: "com.anonymous.simpleiostodo"
+        
+        # Android Config
+        ANDROID_PACKAGE: "com.anonymous.simpleiostodo"  # Update if different from iOS
         BUILD_NUMBER: "1"
       node: 20
-      xcode: 15.0
-      cocoapods: default
+      xcode: 15.0  # Required for iOS
+      cocoapods: default  # Required for iOS
+      java: 17  # Required for Android
+      android: 34  # Required for Android
 
     cache:
       cache_paths:
-        - ~/Library/Caches/CocoaPods
-        - ios/Pods
+        # Shared caches
         - node_modules
         - .yarn/cache
         - .yarn/install-state.gz
         - .yarn/unplugged
+        
+        # iOS-specific caches
+        - ~/Library/Caches/CocoaPods
+        - ios/Pods
+        
+        # Android-specific caches
+        - ~/.gradle/caches
+        - android/.gradle
 
     triggering:
       events:
@@ -39,10 +52,14 @@ workflows:
           yarn -v
           echo "--- npm version ---"
           npm -v
-          echo "--- Xcode version ---"
-          xcodebuild -version
-          echo "--- CocoaPods version ---"
-          pod --version
+          echo "--- Xcode version (macOS only) ---"
+          xcodebuild -version || echo "Xcode not available (Linux)"
+          echo "--- Java version ---"
+          java -version
+          echo "--- Android SDK version ---"
+          sdkmanager --version || echo "Android SDK not available (macOS-only mode)"
+          echo "--- CocoaPods version (macOS only) ---"
+          pod --version || echo "CocoaPods not available (Linux)"
 
       - name: Install Dependencies
         script: |
@@ -58,25 +75,27 @@ workflows:
           echo "--- EAS CLI version ---"
           npx eas-cli --version
 
-      - name: Expo Prebuild
+      - name: Expo Prebuild (iOS & Android)
         script: |
-          echo "--- Generating iOS Native Code ---"
-          npx expo prebuild --platform ios --non-interactive
-          echo "--- Prebuild contents verification ---"
+          echo "--- Generating Native Code for Both Platforms ---"
+          npx expo prebuild --platform all --non-interactive
+          echo "--- iOS Prebuild Contents ---"
           ls -la ios/
+          echo "--- Android Prebuild Contents ---"
+          ls -la android/
 
-      - name: Install CocoaPods
+      - name: Install CocoaPods (iOS)
         script: |
           echo "--- Installing Pods ---"
           cd ios
           pod install --repo-update --verbose
           cd ..
-          echo "--- Pods directory contents ---"
+          echo "--- Pods Directory Contents ---"
           ls -la ios/Pods/
 
-      - name: Build Development Version
+      - name: Build iOS Development Version
         script: |
-          echo "--- Building Development Version ---"
+          echo "--- Building iOS Debug Version ---"
           set -o pipefail && xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
@@ -87,23 +106,36 @@ workflows:
             COMPILER_INDEX_STORE_ENABLE=NO \
             | xcpretty
 
-          # Alternative approach if the above fails
-          echo "--- Fallback: Detailed build logs ---"
+          # Fallback with detailed logs
           xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
-            | tee xcodebuild.log
+            | tee ios_build.log
 
-          # Save the full build logs as artifact
           mkdir -p build_logs
-          mv xcodebuild.log build_logs/
+          mv ios_build.log build_logs/
+
+      - name: Build Android Development Version
+        script: |
+          echo "--- Building Android Debug APK ---"
+          cd android
+          ./gradlew assembleDebug --info --stacktrace
+          cd ..
+          echo "--- APK Location ---"
+          find android/app/build/outputs/apk -name "*.apk" | xargs ls -la
+
+          # Save APK as artifact
+          mkdir -p artifacts
+          find android/app/build/outputs/apk -name "*.apk" -exec cp {} artifacts/ \;
 
     artifacts:
-      - build_logs/xcodebuild.log
+      - build_logs/ios_build.log
+      - artifacts/*.apk
       - ios/build/**/*.log
+      - android/app/build/**/*.log
 
     publishing:
       email:
