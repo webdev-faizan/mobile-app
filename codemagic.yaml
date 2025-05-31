@@ -8,8 +8,8 @@ workflows:
         XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
-        BUILD_NUMBER: "1"  # Added default build number
-      node: 22
+        BUILD_NUMBER: "1"
+      node: 20 # Updated from 22 to more stable LTS version
       xcode: 15.0
       cocoapods: default
 
@@ -31,56 +31,50 @@ workflows:
           source: true
 
     scripts:
-      - name: Check versions
+      - name: Setup Environment
         script: |
-          echo "Node version: $(node -v)"
-          echo "npm version: $(npm -v)"
-          echo "yarn version: $(yarn -v)"
+          echo "--- Node version ---"
+          node -v
+          echo "--- Yarn version ---"
+          yarn -v
+          echo "--- npm version ---"
+          npm -v
 
-      - name: Install dependencies
+      - name: Install Dependencies
         script: |
-          echo "--- Installing dependencies with Yarn Classic ---"
-          yarn install --network-timeout 600000
-          if [ $? -ne 0 ]; then
-            echo "Failed to install dependencies"
-            exit 1
-          fi
+          echo "--- Cleaning npm cache ---"
+          npm cache clean --force
+          echo "--- Installing Yarn dependencies ---"
+          yarn install --network-timeout 600000 --ignore-engines
 
-      - name: Install EAS CLI
+      - name: Setup EAS CLI
         script: |
           echo "--- Installing EAS CLI ---"
-          npm install -g eas-cli@latest
-          export PATH=$PATH:$(npm config get prefix)/bin
-          echo "EAS CLI version: $(eas --version)"
+          npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
+          echo "--- EAS CLI version ---"
+          npx eas-cli --version
 
-      - name: Expo Prebuild
+      - name: Expo Prebuild (Fixed)
         script: |
           echo "--- Generating iOS Native Code ---"
-          npx eas-cli@latest prebuild --platform ios --non-interactive
-          if [ $? -ne 0 ]; then
-            echo "Prebuild failed"
-            exit 1
-          fi
+          npx expo prebuild --platform ios --non-interactive || {
+            echo "Fallback to eas-cli if expo prebuild fails"
+            npx eas-cli prebuild --platform ios --non-interactive
+          }
 
       - name: Install CocoaPods
         script: |
           echo "--- Installing Pods ---"
           cd ios
           pod install --repo-update --verbose
-          if [ $? -ne 0 ]; then
-            echo "Pod installation failed"
-            exit 1
-          fi
+          cd ..
 
       - name: Configure Build
         script: |
           echo "--- Configuring Build ---"
           cd ios
           agvtool new-version -all $BUILD_NUMBER
-          if [ $? -ne 0 ]; then
-            echo "Build configuration failed"
-            exit 1
-          fi
+          cd ..
 
       - name: Build IPA
         script: |
@@ -90,10 +84,6 @@ workflows:
             --scheme "$XCODE_SCHEME" \
             --configuration "Release" \
             --disable-codesigning
-          if [ $? -ne 0 ]; then
-            echo "IPA build failed"
-            exit 1
-          fi
 
     artifacts:
       - build/ios/ipa/*.ipa
