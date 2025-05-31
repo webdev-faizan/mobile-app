@@ -64,6 +64,11 @@ workflows:
           npx expo prebuild --platform ios --non-interactive
           echo "--- Prebuild contents verification ---"
           ls -la ios/
+          # Verify workspace exists
+          if [ ! -f "ios/simple-ios-todo.xcworkspace" ]; then
+            echo "Error: Workspace file not found at ios/simple-ios-todo.xcworkspace"
+            exit 1
+          fi
 
       - name: Install CocoaPods
         script: |
@@ -77,8 +82,16 @@ workflows:
       - name: Build Development Version
         script: |
           echo "--- Building Development Version ---"
+          # Verify workspace path exists before building
+          if [ ! -d "ios/simple-ios-todo.xcworkspace" ]; then
+            echo "Error: Workspace not found at ios/simple-ios-todo.xcworkspace"
+            ls -la ios/
+            exit 1
+          fi
+
+          # Use full path to workspace
           set -o pipefail && xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
+            -workspace "ios/simple-ios-todo.xcworkspace" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
@@ -90,7 +103,7 @@ workflows:
           # Alternative approach if the above fails
           echo "--- Fallback: Detailed build logs ---"
           xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
+            -workspace "ios/simple-ios-todo.xcworkspace" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
