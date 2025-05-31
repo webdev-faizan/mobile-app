@@ -5,11 +5,11 @@ workflows:
     working_directory: .
     environment:
       vars:
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
-        XCODE_SCHEME: "simple-ios-todo"
+        APP_NAME: "simple-ios-todo" # Update this to match your actual app name
         BUNDLE_ID: "com.anonymous.simpleiostodo"
-        BUILD_NUMBER: "1"
-      node: 20 # Updated from 22 to more stable LTS version
+        BUILD_NUMBER: "$(date +%Y%m%d%H%M)"
+        TEAM_ID: "YOUR_APPLE_TEAM_ID" # Replace with your Apple Team ID
+      node: 20
       xcode: 15.0
       cocoapods: default
 
@@ -19,8 +19,6 @@ workflows:
         - ios/Pods
         - node_modules
         - .yarn/cache
-        - .yarn/install-state.gz
-        - .yarn/unplugged
 
     triggering:
       events:
@@ -31,70 +29,114 @@ workflows:
           source: true
 
     scripts:
-      - name: Setup Environment
+      - name: Environment Setup
         script: |
-          echo "--- Node version ---"
-          node -v
-          echo "--- Yarn version ---"
-          yarn -v
-          echo "--- npm version ---"
-          npm -v
+          echo "=== System Information ==="
+          echo "Node: $(node -v)"
+          echo "Yarn: $(yarn -v)"
+          echo "npm: $(npm -v)"
+          echo "Ruby: $(ruby -v)"
+          echo "CocoaPods: $(pod --version)"
+          
+          # Clean caches
+          npm cache clean --force
+          yarn cache clean
 
       - name: Install Dependencies
         script: |
-          echo "--- Cleaning npm cache ---"
-          npm cache clean --force
-          echo "--- Installing Yarn dependencies ---"
-          yarn install --network-timeout 600000 --ignore-engines
+          echo "--- Installing Project Dependencies ---"
+          yarn install --network-timeout 600000 --ignore-engines --frozen-lockfile
+          
+          echo "--- Installing Global Tools ---"
+          npm install -g expo-cli@latest eas-cli@latest --no-audit --fund=false --omit=optional
+          export PATH=$PATH:$(npm config get prefix)/bin
 
-      - name: Setup EAS CLI
+      - name: Generate Native Code
         script: |
-          echo "--- Installing EAS CLI ---"
-          npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
-          echo "--- EAS CLI version ---"
-          npx eas-cli --version
-
-      - name: Expo Prebuild (Fixed)
-        script: |
-          echo "--- Generating iOS Native Code ---"
-          npx expo prebuild --platform ios --non-interactive || {
-            echo "Fallback to eas-cli if expo prebuild fails"
+          echo "--- Running Prebuild ---"
+          if ! npx expo prebuild --platform ios --non-interactive; then
+            echo "Falling back to EAS prebuild..."
             npx eas-cli prebuild --platform ios --non-interactive
+          fi
+
+          echo "--- Verifying Workspace ---"
+          ls ios/*.xcworkspace || {
+            echo "Workspace file not found!"
+            exit 1
           }
 
-      - name: Install CocoaPods
+      - name: iOS Configuration
         script: |
-          echo "--- Installing Pods ---"
+          echo "--- Installing CocoaPods ---"
           cd ios
           pod install --repo-update --verbose
-          cd ..
-
-      - name: Configure Build
-        script: |
-          echo "--- Configuring Build ---"
-          cd ios
+          
+          echo "--- Setting Build Number ---"
           agvtool new-version -all $BUILD_NUMBER
+          
+          echo "--- Creating Export Options ---"
+          cat > ExportOptions.plist <<EOL
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>development</string>
+              <key>teamID</key>
+              <string>$TEAM_ID</string>
+              <key>compileBitcode</key>
+              <false/>
+          </dict>
+          </plist>
+          EOL
           cd ..
 
       - name: Build IPA
         script: |
-          echo "--- Building Production IPA ---"
-          xcode-project build-ipa \
-            --workspace "$XCODE_WORKSPACE" \
-            --scheme "$XCODE_SCHEME" \
-            --configuration "Release" \
-            --disable-codesigning
+          echo "--- Building IPA ---"
+          cd ios
+          
+          # Create build directory
+          mkdir -p build
+          
+          # Archive the app
+          xcodebuild archive \
+            -workspace "$APP_NAME.xcworkspace" \
+            -scheme "$APP_NAME" \
+            -configuration Release \
+            -archivePath build/$APP_NAME.xcarchive \
+            -allowProvisioningUpdates
+          
+          # Export IPA
+          xcodebuild -exportArchive \
+            -archivePath build/$APP_NAME.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath build/ipa \
+            -allowProvisioningUpdates
+          
+          echo "IPA generated at: ios/build/ipa/$APP_NAME.ipa"
 
     artifacts:
-      - build/ios/ipa/*.ipa
+      - ios/build/ipa/*.ipa
       - ios/build/**/*.dSYM
 
     publishing:
       scripts:
-        - name: Clean up build artifacts
-          script: rm -rf ios/build
+        - name: Prepare Artifacts
+          script: |
+            mkdir -p artifacts
+            cp ios/build/ipa/*.ipa artifacts/
+            cp -r ios/build/*.dSYM artifacts/ 2>/dev/null || :
+            echo "Artifacts ready for download:"
+            ls -lh artifacts/
       email:
         recipients:
           - webdev.faizanali@gmail.com
+        notify:
+          success: true
+          failure: true
       slack:
         channel: "#build-notifications"
+        notify:
+          success: true
+          failure: true
