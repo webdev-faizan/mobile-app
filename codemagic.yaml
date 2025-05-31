@@ -4,12 +4,6 @@ workflows:
     instance_type: mac_mini_m2
     working_directory: .
     environment:
-      vars:
-        BUILD_NUMBER: "1"
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
-        XCODE_SCHEME: "simple-ios-todo"
-        BUNDLE_ID: "com.anonymous.simpleiostodo"
-        # EXPO_TOKEN removed - no login required for development builds
       node: 20
       java: 17
       xcode: 15.0
@@ -35,79 +29,108 @@ workflows:
     scripts:
       - name: Setup Environment
         script: |
-          echo "--- Node version ---"
-          node -v
-          echo "--- Yarn version ---"
-          yarn -v
-          echo "--- npm version ---"
-          npm -v
-          echo "--- Java version ---"
-          java -version
-          echo "--- Xcode version ---"
-          xcodebuild -version
-          echo "--- CocoaPods version ---"
-          pod --version
+          echo "--- System Info ---"
+          echo "Node version: $(node -v)"
+          echo "Yarn version: $(yarn -v)"
+          echo "npm version: $(npm -v)"
+          echo "Java version: $(java -version 2>&1 | head -n 1)"
+          echo "Xcode version: $(xcodebuild -version | head -n 1)"
+          echo "CocoaPods version: $(pod --version)"
+          echo "System architecture: $(uname -m)"
+          echo "Available memory: $(sysctl -n hw.memsize | awk '{print $0/1073741824" GB"}')"
+
+      - name: Clean Workspace
+        script: |
+          echo "--- Cleaning previous builds ---"
+          rm -rf ios/build
+          rm -rf ios_simulator_build
+          rm -f ios-simulator-build.tar.gz
+          find . -name "*.log" -delete
 
       - name: Install Dependencies
         script: |
+          echo "--- Installing dependencies ---"
           npm cache clean --force
-          yarn install --network-timeout 600000 --ignore-engines
+          yarn install --network-timeout 600000 --ignore-engines --frozen-lockfile
+          yarn check --verify-tree || (echo "Dependency tree verification failed" && exit 1)
 
       - name: Setup Expo CLI
         script: |
-          npm install -g @expo/cli@latest --no-audit --fund=false --omit=optional
+          echo "--- Setting up Expo CLI ---"
+          npm install -g @expo/cli@6.4.1 --no-audit --fund=false --omit=optional
           npx expo --version
 
-      - name: Build iOS (Local)
+      - name: Prebuild iOS Project
         script: |
-          echo "--- Building iOS Simulator locally ---"
+          echo "--- Running expo prebuild ---"
           npx expo prebuild --platform ios --non-interactive
+          
+          echo "--- Verifying prebuild files ---"
+          [ -d "ios/simple-ios-todo.xcworkspace" ] || (echo "Workspace not found" && exit 1)
+          [ -f "ios/Podfile" ] || (echo "Podfile not found" && exit 1)
+
+      - name: Install CocoaPods
+        script: |
+          echo "--- Installing pods ---"
           cd ios
           pod install --repo-update --verbose
           cd ..
+          [ -d "ios/Pods" ] || (echo "Pods directory not created" && exit 1)
 
-          # Build for iOS Simulator with a specific simulator device
+      - name: Build iOS Simulator
+        script: |
+          echo "--- Building for iOS Simulator ---"
+          set -o pipefail
+          
           xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
+            -workspace "ios/simple-ios-todo.xcworkspace" \
+            -scheme "simple-ios-todo" \
             -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 14,OS=latest' \
+            -destination 'platform=iOS Simulator,name=iPhone 14,OS=17.0' \
             -derivedDataPath ios/build \
             CODE_SIGNING_ALLOWED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            | tee xcodebuild.log
 
-          echo "--- Listing build output directory for Debug-iphonesimulator ---"
-          ls -la ios/build/Build/Products/Debug-iphonesimulator/
+          echo "--- Xcodebuild exit code: $? ---"
+          grep "BUILD SUCCEEDED" xcodebuild.log || (echo "Build failed" && exit 1)
 
-          # Create simulator app bundle directory
+      - name: Package Artifacts
+        script: |
+          echo "--- Packaging build artifacts ---"
           mkdir -p ios_simulator_build
-
-          # Copy .app if exists and package it as tar.gz
-          if [ -d "ios/build/Build/Products/Debug-iphonesimulator" ]; then
-            cp -R ios/build/Build/Products/Debug-iphonesimulator/*.app ios_simulator_build/ || echo "No .app found"
-            cd ios_simulator_build
-            tar -czf ../ios-simulator-build.tar.gz *.app
-            cd ..
+          
+          if [ -d "ios/build/Build/Products/Debug-iphonesimulator/simple-ios-todo.app" ]; then
+            cp -R ios/build/Build/Products/Debug-iphonesimulator/simple-ios-todo.app ios_simulator_build/
+            tar -czf ios-simulator-build.tar.gz -C ios_simulator_build .
+            echo "--- Artifact sizes ---"
+            du -sh ios_simulator_build/*.app
+            du -sh ios-simulator-build.tar.gz
           else
-            echo "No build output directory found for Debug-iphonesimulator"
+            echo "Error: .app bundle not found"
+            find ios/build -type d -name "*.app" -print
+            exit 1
           fi
 
-      - name: Verify Build Artifacts
+      - name: Verify Build Output
         script: |
-          echo "--- Verifying build artifacts ---"
-          echo "iOS Simulator builds:"
-          find . -name "*.app" -type d
-          find . -name "*.tar.gz" -type f
-          echo "Build directories:"
-          ls -la ios_simulator_build/ || echo "No iOS simulator build directory"
+          echo "--- Build verification ---"
+          [ -f "ios-simulator-build.tar.gz" ] || (echo "Tar archive not found" && exit 1)
+          tar -ztvf ios-simulator-build.tar.gz | grep "simple-ios-todo.app/" || (echo "App not in archive" && exit 1)
+          echo "--- Build verified successfully ---"
 
     artifacts:
-      # Local build artifacts
-      - ios_simulator_build/*.app
-      - ios-simulator-build.tar.gz
-      # Build logs
-      - ios/build/**/*.log
-      - build_logs/**
+      - name: iOS Simulator Build
+        paths:
+          - ios_simulator_build/*.app
+          - ios-simulator-build.tar.gz
+        expire_in: 7 days
+      
+      - name: Build Logs
+        paths:
+          - ios/build/**/*.log
+          - xcodebuild.log
+        expire_in: 3 days
 
     publishing:
       email:
@@ -122,3 +145,5 @@ workflows:
         notify:
           success: true
           failure: true
+        on_success_message: "iOS Simulator build succeeded :white_check_mark:"
+        on_failure_message: "iOS Simulator build failed :x:"
