@@ -8,7 +8,7 @@ workflows:
         XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
-      node: 18
+      node: 22
       xcode: 15.0
       cocoapods: default
     
@@ -17,8 +17,9 @@ workflows:
         - ~/Library/Caches/CocoaPods
         - ios/Pods
         - node_modules
-        - $HOME/.yarn/cache
-        - $HOME/.yarn/berry/cache
+        - .yarn/cache
+        - .yarn/install-state.gz
+        - .yarn/unplugged
     
     triggering:
       events:
@@ -33,8 +34,9 @@ workflows:
         script: |
           echo "--- Setting up Yarn ---"
           npm install -g yarn
-          yarn set version stable
-          yarn install --frozen-lockfile --network-timeout 600000
+          yarn set version berry
+          yarn config set nodeLinker node-modules
+          yarn install --network-timeout 600000
           yarn global add expo-cli eas-cli
           
       - name: Expo Prebuild
