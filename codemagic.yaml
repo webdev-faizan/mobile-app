@@ -1,4 +1,3 @@
----
 workflows:
   expo-multi-platform-build:
     name: Expo Multi-Platform Build
@@ -71,45 +70,74 @@ workflows:
           npx expo prebuild --platform all --non-interactive --clean
           echo "--- Prebuild contents verification ---"
           ls -la ios/
+          echo "--- Checking if Podfile exists ---"
+          if [ -f "ios/Podfile" ]; then
+            echo "✅ Podfile found"
+            cat ios/Podfile
+          else
+            echo "❌ Podfile not found"
+          fi
 
       - name: Install CocoaPods (iOS)
         script: |
-          echo "--- Cleaning previous Pods installation ---"
+          echo "--- Cleaning previous installations ---"
           rm -rf ios/Pods ios/Podfile.lock ios/simpleiostodo.xcworkspace
+          rm -rf ~/Library/Caches/CocoaPods
+          
+          echo "--- Updating CocoaPods specs repo ---"
+          pod repo update
           
           echo "--- Installing Pods ---"
           cd ios
-          pod install --repo-update --verbose
-          cd ..
           
-          echo "--- Verifying Pods installation ---"
-          if [ -d "ios/Pods" ]; then
-            echo "✅ Pods installed successfully"
+          # Ensure Podfile exists
+          if [ ! -f "Podfile" ]; then
+            echo "❌ Podfile not found! Running expo prebuild first..."
+            cd ..
+            npx expo prebuild --platform ios --clean
+            cd ios
+          fi
+          
+          # Install pods with verbose output
+          pod install --repo-update --verbose --clean-install
+          
+          echo "--- Verifying installation ---"
+          if [ -d "Pods" ] && [ -f "Pods/Target Support Files/Pods-simpleiostodo/Pods-simpleiostodo.debug.xcconfig" ]; then
+            echo "✅ Pods and config files installed successfully"
+            ls -la "Pods/Target Support Files/Pods-simpleiostodo/"
           else
-            echo "❌ Pods installation failed"
+            echo "❌ Pods installation incomplete"
+            echo "Contents of ios directory:"
+            ls -la
+            if [ -d "Pods" ]; then
+              echo "Pods directory contents:"
+              find Pods -name "*.xcconfig" | head -10
+            fi
             exit 1
           fi
           
-          echo "--- Checking workspace ---"
-          if [ -d "ios/simpleiostodo.xcworkspace" ]; then
+          echo "--- Checking workspace creation ---"
+          if [ -d "simpleiostodo.xcworkspace" ]; then
             echo "✅ Workspace created successfully"
           else
-            echo "⚠️ Workspace not found, falling back to xcodeproj"
-            if [ -d "ios/simpleiostodo.xcodeproj" ]; then
-              echo "ℹ️ Using xcodeproj instead"
-              echo "XCODE_PROJECT=ios/simpleiostodo.xcodeproj" >> $CM_ENV
-              echo "USE_PROJECT=true" >> $CM_ENV
-            else
-              echo "❌ No valid Xcode project found!"
-              exit 1
-            fi
+            echo "❌ Workspace not created"
+            exit 1
           fi
+          
+          cd ..
 
       - name: Prepare iOS Build
         script: |
           echo "--- Preparing iOS Build ---"
           cd ios
-          xcodebuild clean -workspace simpleiostodo.xcworkspace -scheme simpleiostodo
+          
+          # Clean previous builds
+          if [ -d "simpleiostodo.xcworkspace" ]; then
+            xcodebuild clean -workspace simpleiostodo.xcworkspace -scheme simpleiostodo
+          elif [ -d "simpleiostodo.xcodeproj" ]; then
+            xcodebuild clean -project simpleiostodo.xcodeproj -scheme simpleiostodo
+          fi
+          
           cd ..
           rm -rf ios/build
 
@@ -119,28 +147,30 @@ workflows:
           mkdir -p build_logs/ios
           
           # Determine build target
-          if [ "$USE_PROJECT" = "true" ] && [ -d "$XCODE_PROJECT" ]; then
-            echo "Using Xcode project: $XCODE_PROJECT"
-            BUILD_TARGET="-project $XCODE_PROJECT"
-          elif [ -d "$XCODE_WORKSPACE" ]; then
+          if [ -d "$XCODE_WORKSPACE" ]; then
             echo "Using workspace: $XCODE_WORKSPACE"
             BUILD_TARGET="-workspace $XCODE_WORKSPACE"
+          elif [ -d "ios/simpleiostodo.xcodeproj" ]; then
+            echo "Using project: ios/simpleiostodo.xcodeproj"
+            BUILD_TARGET="-project ios/simpleiostodo.xcodeproj"
           else
             echo "Error: No valid workspace or project found"
+            ls -la ios/
             exit 1
           fi
           
-          # Run the build with full logging
+          # Run the build with modern build system
           set -o pipefail && xcodebuild \
             $BUILD_TARGET \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
+            -allowProvisioningUpdates \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
-            -UseModernBuildSystem=NO \
+            ONLY_ACTIVE_ARCH=NO \
             | tee build_logs/ios/xcodebuild.log
           
           BUILD_RESULT=$?
@@ -155,6 +185,12 @@ workflows:
             echo "--- Last 100 lines of build log ---"
             tail -n 100 build_logs/ios/xcodebuild.log
             echo "--- Build failed with error code $BUILD_RESULT ---"
+            
+            # Additional debugging
+            echo "--- Checking Pods configuration ---"
+            if [ -d "ios/Pods" ]; then
+              find ios/Pods -name "*.xcconfig" | head -5
+            fi
           fi
           
           exit $BUILD_RESULT
@@ -163,7 +199,14 @@ workflows:
         script: |
           echo "--- Building Android Debug Version ---"
           cd android
-          ./gradlew assembleDebug --stacktrace
+          
+          # Make gradlew executable
+          chmod +x ./gradlew
+          
+          # Clean and build
+          ./gradlew clean
+          ./gradlew assembleDebug --stacktrace --info
+          
           cd ..
           echo "--- APK location ---"
           find android -name "*.apk" -exec ls -la {} \;
