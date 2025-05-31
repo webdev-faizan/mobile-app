@@ -1,164 +1,63 @@
 workflows:
-  expo-development-build:
-    name: Expo Development Build (Android & iOS)
+
+  maui-ios-simulator-build:
+
+    name: Dotnet MAUI iOS Simulator
+
+    max_build_duration: 120
+
     instance_type: mac_mini_m2
-    working_directory: .
+
     environment:
+
+      xcode: latest
+
       vars:
-        BUILD_NUMBER: "1"
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
-        XCODE_SCHEME: "simple-ios-todo"
-        BUNDLE_ID: "com.anonymous.simpleiostodo"
-        IOS_DESTINATION: "platform=iOS Simulator,name=iPhone 15,OS=17.0"
-      node: 20
-      java: 17
-      xcode: 15.0
-      cocoapods: default
 
-    cache:
-      cache_paths:
-        - node_modules
-        - .yarn/cache
-        - .yarn/install-state.gz
-        - .yarn/unplugged
-        - ~/Library/Caches/CocoaPods
-        - ios/Pods
+        DOTNET_PATH: $CM_BUILD_DIR/dotnet
 
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: "master*"
-          include: true
-          source: true
+        DOTNET: $CM_BUILD_DIR/dotnet/dotnet
 
     scripts:
-      - name: Setup Environment
-        script: |
-          echo "--- Node version ---"
-          node -v
-          echo "--- Yarn version ---"
-          yarn -v
-          echo "--- npm version ---"
-          npm -v
-          echo "--- Java version ---"
-          java -version
-          echo "--- Xcode version ---"
-          xcodebuild -version
-          echo "--- CocoaPods version ---"
-          pod --version
-          echo "--- Android SDK location ---"
-          echo $ANDROID_SDK_ROOT
 
-      - name: Install Dependencies
-        script: |
-          npm cache clean --force
-          yarn install --network-timeout 600000 --ignore-engines
+      - name: Install .NET SDK
 
-      - name: Setup Expo CLI
-        script: |
-          npm install -g @expo/cli@latest --no-audit --fund=false --omit=optional
-          npx expo --version
+        script: | 
 
-      - name: Build Android (Local)
-        script: |
-          echo "--- Building Android APK locally ---"
-          npx expo prebuild --platform android --non-interactive
-          cd android
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
-          cd ..
-          # Verify APK exists
-          if [ ! -f "android/app/build/outputs/apk/debug/app-debug.apk" ]; then
-            echo "::error::Android APK not found!"
-            exit 1
-          fi
+          wget https://dot.net/v1/dotnet-install.sh
 
-      - name: Build iOS (Local)
-        script: |
-          echo "--- Building iOS Simulator locally ---"
-          npx expo prebuild --platform ios --non-interactive
-          
-          cd ios
-          pod install --repo-update --verbose
-          cd ..
-          
-          # Clean previous builds
-          rm -rf ios/build ios_simulator_build ios-simulator-build.tar.gz
-          mkdir -p ios_simulator_build
-          
-          echo "--- Building iOS Simulator App ---"
-          xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -destination "$IOS_DESTINATION" \
-            -derivedDataPath ios/build \
-            CODE_SIGNING_ALLOWED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            | tee xcodebuild.log
-          
-          # Find and copy the .app bundle
-          APP_BUNDLE=$(find ios/build -name "*.app" -print -quit)
-          if [ -z "$APP_BUNDLE" ]; then
-            echo "::error::Failed to find iOS .app bundle"
-            cat xcodebuild.log
-            exit 1
-          fi
-          
-          echo "Found app bundle at: $APP_BUNDLE"
-          cp -R "$APP_BUNDLE" ios_simulator_build/
-          
-          # Create compressed archive
-          cd ios_simulator_build
-          tar -czf ../ios-simulator-build.tar.gz *.app
-          cd ..
-          
-          # Verify artifacts
-          if [ ! -f "ios-simulator-build.tar.gz" ]; then
-            echo "::error::Failed to create iOS simulator archive"
-            exit 1
-          fi
+          chmod +x dotnet-install.sh
 
-      - name: Verify Build Artifacts
+          ./dotnet-install.sh --channel 7.0 --install-dir $DOTNET_PATH
+
+      - name: Add nuget source
+
         script: |
-          echo "--- Build Artifacts Verification ---"
-          echo "Android APK:"
-          ls -lh android/app/build/outputs/apk/debug/
-          echo "iOS Simulator:"
-          ls -lh ios_simulator_build/
-          echo "Archive:"
-          ls -lh ios-simulator-build.tar.gz
-          
-          # Final verification
-          if [ ! -f "android/app/build/outputs/apk/debug/app-debug.apk" ] || [ ! -f "ios-simulator-build.tar.gz" ]; then
-            echo "::error::Missing build artifacts!"
-            exit 1
-          fi
+
+          $DOTNET nuget add source https://www.myget.org/F/caliburn-micro-builds/api/v3/index.json --name CaliburnNuGet.org          
+
+      - name: Install MAUI
+
+        script: |
+
+          $DOTNET_BIN nuget locals all --clear
+
+          $DOTNET workload restore
+
+          $DOTNET workload install maui-android maui-ios \
+
+          --source https://aka.ms/dotnet7/nuget/index.json \
+
+          --source https://api.nuget.org/v3/index.json          
+
+      - name: Build the app for iOS Simulator
+
+        script: |
+
+          cd MauiNet7
+
+          $DOTNET dotnet build -f net7.0-ios -c Debug  -o ../artifacts          
 
     artifacts:
-      # Android artifacts
-      - android/app/build/outputs/apk/debug/*.apk
-      - android/app/build/**/*.log
-      
-      # iOS artifacts
-      - ios_simulator_build/*.app
-      - ios-simulator-build.tar.gz
-      - xcodebuild.log
-      
-      # Build logs
-      - ios/build/**/*.log
-      - build_logs/**
 
-    publishing:
-      email:
-        recipients:
-          - webdev.faizanali@gmail.com
-        notify:
-          success: true
-          failure: true
-      slack:
-        channel: "#build-notifications"
-        notify_on_build_start: true
-        notify:
-          success: true
-          failure: true
+    - ./artifacts/*.app
