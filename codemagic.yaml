@@ -1,22 +1,17 @@
 workflows:
-  expo-ios-development:
-    name: Expo iOS Development Build
-    instance_type: mac_mini_m2
+  expo-android-development:
+    name: Expo Android Development Build
+    instance_type: linux_xlarge
     working_directory: .
     environment:
       vars:
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
-        XCODE_SCHEME: "simple-ios-todo"
-        BUNDLE_ID: "com.anonymous.simpleiostodo"
         BUILD_NUMBER: "1"
       node: 20
-      xcode: 15.0
-      cocoapods: default
+      java: 17
+      android: 33
 
     cache:
       cache_paths:
-        - ~/Library/Caches/CocoaPods
-        - ios/Pods
         - node_modules
         - .yarn/cache
         - .yarn/install-state.gz
@@ -39,10 +34,10 @@ workflows:
           yarn -v
           echo "--- npm version ---"
           npm -v
-          echo "--- Xcode version ---"
-          xcodebuild -version
-          echo "--- CocoaPods version ---"
-          pod --version
+          echo "--- Java version ---"
+          java -version
+          echo "--- Android SDK location ---"
+          echo $ANDROID_SDK_ROOT
 
       - name: Install Dependencies
         script: |
@@ -60,50 +55,22 @@ workflows:
 
       - name: Expo Prebuild
         script: |
-          echo "--- Generating iOS Native Code ---"
-          npx expo prebuild --platform ios --non-interactive
+          echo "--- Generating Android Native Code ---"
+          npx expo prebuild --platform android --non-interactive
           echo "--- Prebuild contents verification ---"
-          ls -la ios/
+          ls -la android/
 
-      - name: Install CocoaPods
+      - name: Build Android Development APK
         script: |
-          echo "--- Installing Pods ---"
-          cd ios
-          pod install --repo-update --verbose
+          echo "--- Building Development APK ---"
+          cd android
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
           cd ..
-          echo "--- Pods directory contents ---"
-          ls -la ios/Pods/
-
-      - name: Build Development Version
-        script: |
-          echo "--- Building Development Version ---"
-          set -o pipefail && xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            -quiet \
-            CODE_SIGNING_ALLOWED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            | xcpretty
-
-          # Alternative approach if the above fails
-          echo "--- Fallback: Detailed build logs ---"
-          xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            | tee xcodebuild.log
-
-          # Save the full build logs as artifact
-          mkdir -p build_logs
-          mv xcodebuild.log build_logs/
+          echo "--- APK Build Complete ---"
 
     artifacts:
-      - build_logs/xcodebuild.log
-      - ios/build/**/*.log
+      - android/app/build/outputs/**/*.apk
+      - android/app/build/**/*.log
 
     publishing:
       email:
