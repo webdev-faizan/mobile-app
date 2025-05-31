@@ -9,7 +9,7 @@ workflows:
         XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
-        # EXPO_TOKEN removed - no login required for development builds
+        IOS_DESTINATION: "platform=iOS Simulator,name=iPhone 15,OS=17.0"
       node: 20
       java: 17
       xcode: 15.0
@@ -67,53 +67,84 @@ workflows:
           cd android
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
           cd ..
+          # Verify APK exists
+          if [ ! -f "android/app/build/outputs/apk/debug/app-debug.apk" ]; then
+            echo "::error::Android APK not found!"
+            exit 1
+          fi
 
       - name: Build iOS (Local)
         script: |
           echo "--- Building iOS Simulator locally ---"
           npx expo prebuild --platform ios --non-interactive
+          
           cd ios
           pod install --repo-update --verbose
           cd ..
           
-          # Build for iOS Simulator
+          # Clean previous builds
+          rm -rf ios/build ios_simulator_build ios-simulator-build.tar.gz
+          mkdir -p ios_simulator_build
+          
+          echo "--- Building iOS Simulator App ---"
           xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
+            -destination "$IOS_DESTINATION" \
             -derivedDataPath ios/build \
             CODE_SIGNING_ALLOWED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            | tee xcodebuild.log
           
-          # Create simulator app bundle
-          mkdir -p ios_simulator_build
-          if [ -d "ios/build/Build/Products/Debug-iphonesimulator" ]; then
-            cp -R ios/build/Build/Products/Debug-iphonesimulator/*.app ios_simulator_build/ || echo "No .app found"
-            # Package simulator build for easier download
-            cd ios_simulator_build
-            tar -czf ../ios-simulator-build.tar.gz *.app
-            cd ..
+          # Find and copy the .app bundle
+          APP_BUNDLE=$(find ios/build -name "*.app" -print -quit)
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "::error::Failed to find iOS .app bundle"
+            cat xcodebuild.log
+            exit 1
+          fi
+          
+          echo "Found app bundle at: $APP_BUNDLE"
+          cp -R "$APP_BUNDLE" ios_simulator_build/
+          
+          # Create compressed archive
+          cd ios_simulator_build
+          tar -czf ../ios-simulator-build.tar.gz *.app
+          cd ..
+          
+          # Verify artifacts
+          if [ ! -f "ios-simulator-build.tar.gz" ]; then
+            echo "::error::Failed to create iOS simulator archive"
+            exit 1
           fi
 
       - name: Verify Build Artifacts
         script: |
-          echo "--- Verifying build artifacts ---"
-          echo "Android APK files:"
-          find . -name "*.apk" -type f
-          echo "iOS Simulator builds:"
-          find . -name "*.app" -type d
-          find . -name "*.tar.gz" -type f
-          echo "Build directories:"
-          ls -la android/app/build/outputs/apk/debug/ || echo "No Android debug APK directory"
-          ls -la ios_simulator_build/ || echo "No iOS simulator build directory"
+          echo "--- Build Artifacts Verification ---"
+          echo "Android APK:"
+          ls -lh android/app/build/outputs/apk/debug/
+          echo "iOS Simulator:"
+          ls -lh ios_simulator_build/
+          echo "Archive:"
+          ls -lh ios-simulator-build.tar.gz
+          
+          # Final verification
+          if [ ! -f "android/app/build/outputs/apk/debug/app-debug.apk" ] || [ ! -f "ios-simulator-build.tar.gz" ]; then
+            echo "::error::Missing build artifacts!"
+            exit 1
+          fi
 
     artifacts:
-      # Local build artifacts
-      - android/app/build/outputs/**/*.apk
+      # Android artifacts
+      - android/app/build/outputs/apk/debug/*.apk
       - android/app/build/**/*.log
+      
+      # iOS artifacts
       - ios_simulator_build/*.app
       - ios-simulator-build.tar.gz
+      - xcodebuild.log
+      
       # Build logs
       - ios/build/**/*.log
       - build_logs/**
