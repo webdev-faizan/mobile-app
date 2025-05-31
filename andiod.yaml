@@ -1,0 +1,79 @@
+workflows:
+  expo-android-development:
+    name: Expo Android Development Build
+    instance_type: mac_mini_m2
+    working_directory: .
+    environment:
+      vars:
+        BUILD_NUMBER: "1"
+      node: 20
+      java: 17
+
+    cache:
+      cache_paths:
+        - node_modules
+        - .yarn/cache
+        - .yarn/install-state.gz
+        - .yarn/unplugged
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: "master*"
+          include: true
+          source: true
+
+    scripts:
+      - name: Setup Environment
+        script: |
+          echo "--- Node version ---"
+          node -v
+          echo "--- Yarn version ---"
+          yarn -v
+          echo "--- npm version ---"
+          npm -v
+          echo "--- Java version ---"
+          java -version
+          echo "--- Android SDK location ---"
+          echo $ANDROID_SDK_ROOT
+
+      - name: Install Dependencies
+        script: |
+          echo "--- Cleaning npm cache ---"
+          npm cache clean --force
+          echo "--- Installing Yarn dependencies ---"
+          yarn install --network-timeout 600000 --ignore-engines
+
+      - name: Setup EAS CLI
+        script: |
+          echo "--- Installing EAS CLI ---"
+          npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
+          echo "--- EAS CLI version ---"
+          npx eas-cli --version
+
+      - name: Expo Prebuild
+        script: |
+          echo "--- Generating Android Native Code ---"
+          npx expo prebuild --platform android --non-interactive
+          echo "--- Prebuild contents verification ---"
+          ls -la android/
+
+      - name: Build Android Development APK
+        script: |
+          echo "--- Building Development APK ---"
+          cd android
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          cd ..
+          echo "--- APK Build Complete ---"
+
+    artifacts:
+      - android/app/build/outputs/**/*.apk
+      - android/app/build/**/*.log
+
+    publishing:
+      email:
+        recipients:
+          - webdev.faizanali@gmail.com
+      slack:
+        channel: "#build-notifications"
