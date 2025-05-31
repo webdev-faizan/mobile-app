@@ -5,7 +5,6 @@ workflows:
     working_directory: .
     environment:
       vars:
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
         IOS_BUNDLE_ID: "com.anonymous.simpleiostodo"
         ANDROID_PACKAGE: "com.anonymous.simpleiostodo"
@@ -92,8 +91,10 @@ workflows:
         script: |
           echo "--- Building iOS Debug Version ---"
           cd ios
+          
+          # First try with xcpretty for cleaner output
           set -o pipefail && xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
+            -workspace simple-ios-todo.xcworkspace \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
@@ -102,18 +103,21 @@ workflows:
             COMPILER_INDEX_STORE_ENABLE=NO \
             | xcpretty
 
-          # Fallback with detailed logs
-          xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            | tee ../ios_build.log
+          # Fallback with detailed logs if the first attempt fails
+          if [ $? -ne 0 ]; then
+            echo "--- Retrying with full logs ---"
+            xcodebuild \
+              -workspace simple-ios-todo.xcworkspace \
+              -scheme "$XCODE_SCHEME" \
+              -configuration Debug \
+              -destination 'generic/platform=iOS' \
+              CODE_SIGNING_ALLOWED=NO \
+              | tee ../ios_build.log
+          fi
 
           cd ..
           mkdir -p build_logs
-          mv ios_build.log build_logs/
+          mv ios_build.log build_logs/ || true
 
       - name: Build Android Development Version
         script: |
