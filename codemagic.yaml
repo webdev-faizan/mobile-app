@@ -9,6 +9,7 @@ workflows:
         IOS_BUNDLE_ID: "com.anonymous.simpleiostodo"
         ANDROID_PACKAGE: "com.anonymous.simpleiostodo"
         BUILD_NUMBER: "1"
+        IOS_DEPLOYMENT_TARGET: "14.0"  # Updated to 14.0
       node: 20
       xcode: 15.0
       cocoapods: default
@@ -72,20 +73,29 @@ workflows:
           echo "--- Android Prebuild Contents ---"
           ls -la android/
 
-      - name: Update iOS Deployment Target
+      - name: Update iOS Deployment Targets
         script: |
           echo "--- Checking for Podfile ---"
           if [ ! -f "ios/Podfile" ]; then
             echo "Error: ios/Podfile not found after prebuild!"
-            echo "Directory contents:"
             ls -la ios/
             exit 1
           fi
           
-          echo "--- Updating iOS Deployment Target ---"
-          sed -i '' "s/platform :ios, .*/platform :ios, '13.0'/" ios/Podfile
+          echo "--- Updating iOS Deployment Target to $IOS_DEPLOYMENT_TARGET ---"
+          # Update Podfile
+          sed -i '' "s/platform :ios, .*/platform :ios, '$IOS_DEPLOYMENT_TARGET'/" ios/Podfile
           echo "--- Updated Podfile content ---"
           grep "platform :ios" ios/Podfile
+
+          # Update project.pbxproj files
+          echo "--- Updating Xcode project deployment targets ---"
+          find ios -name '*.pbxproj' -exec sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = .*/IPHONEOS_DEPLOYMENT_TARGET = $IOS_DEPLOYMENT_TARGET;/g" {} +
+
+          # Update project.yml if exists (for newer Expo projects)
+          if [ -f "ios/simple-ios-todo/project.yml" ]; then
+            sed -i '' "s/minimumOSVersion: .*/minimumOSVersion: $IOS_DEPLOYMENT_TARGET/" ios/simple-ios-todo/project.yml
+          fi
 
       - name: Install CocoaPods (iOS)
         script: |
@@ -145,8 +155,9 @@ workflows:
       - artifacts/*.apk
       - ios/build/**/*.log
       - android/app/build/**/*.log
-      - ios/Podfile   # Added for debugging
-      - ios/Podfile.lock # Added for debugging
+      - ios/Podfile
+      - ios/Podfile.lock
+      - ios/simple-ios-todo/project.pbxproj
 
     publishing:
       email:
