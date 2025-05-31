@@ -1,30 +1,44 @@
 {
-    "build": {
-      "development": {
-        "developmentClient": true,
-        "distribution": "internal"
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "gradleCommand": ":app:assembleDebug",
+        "buildType": "apk"
       },
-      "preview": {
-        "distribution": "internal",
-        "android": {
-          "buildType": "apk"
-        },
-        "ios": {
-          "simulator": true
-        }
-      },
-      "production": {
-        "distribution": "store",
-        "android": {
-          "buildType": "app-bundle"
-        },
-        "ios": {
-          "buildConfiguration": "Release"
-        }
+      "ios": {
+        "simulator": true,
+        "buildConfiguration": "Debug",
+        "autoIncrement": true
       }
     },
-    "cli": {
-      "version": ">= 3.13.0"
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true,
+        "buildConfiguration": "Release",
+        "autoIncrement": true
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle",
+        "gradleCommand": ":app:bundleRelease"
+      },
+      "ios": {
+        "buildConfiguration": "Release",
+        "enterpriseProvisioning": "universal",
+        "autoIncrement": true
+      }
     }
-  }
-  
+  },
+  "cli": {
+    "version": ">= 3.13.0"
+  },
+  "submit": {}
+}
