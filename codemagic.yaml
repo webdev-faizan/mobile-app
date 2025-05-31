@@ -64,12 +64,6 @@ workflows:
           echo "--- EAS CLI version ---"
           npx eas-cli --version
 
-      - name: Update iOS Deployment Target
-        script: |
-          echo "--- Updating iOS Deployment Target ---"
-          sed -i '' "s/platform :ios, .*/platform :ios, '13.0'/" ios/Podfile
-          cat ios/Podfile | grep "platform :ios"
-
       - name: Expo Prebuild (iOS & Android)
         script: |
           echo "--- Generating Native Code for Both Platforms ---"
@@ -78,6 +72,12 @@ workflows:
           ls -la ios/
           echo "--- Android Prebuild Contents ---"
           ls -la android/
+
+      - name: Update iOS Deployment Target
+        script: |
+          echo "--- Updating iOS Deployment Target ---"
+          sed -i '' "s/platform :ios, .*/platform :ios, '13.0'/" ios/Podfile
+          cat ios/Podfile | grep "platform :ios"
 
       - name: Install CocoaPods (iOS)
         script: |
