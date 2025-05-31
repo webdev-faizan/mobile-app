@@ -8,7 +8,6 @@ workflows:
         BUILD_NUMBER: "1"
       node: 20
       java: 17
-      android: 33
 
     cache:
       cache_paths:
