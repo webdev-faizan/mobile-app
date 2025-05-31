@@ -82,10 +82,10 @@ workflows:
         script: |
           echo "--- Cleaning previous installations ---"
           rm -rf ios/Pods ios/Podfile.lock ios/simpleiostodo.xcworkspace
-          rm -rf ~/Library/Caches/CocoaPods
           
-          echo "--- Updating CocoaPods specs repo ---"
-          pod repo update
+          echo "--- CocoaPods setup ---"
+          # Don't update the entire repo as it's time-consuming and can fail
+          # pod repo update
           
           echo "--- Installing Pods ---"
           cd ios
@@ -98,30 +98,62 @@ workflows:
             cd ios
           fi
           
-          # Install pods with verbose output
-          pod install --repo-update --verbose --clean-install
+          echo "--- Checking Podfile content ---"
+          cat Podfile
+          
+          # Try installation with different approaches
+          echo "--- Attempting pod install (attempt 1) ---"
+          if pod install --verbose; then
+            echo "✅ Pod install successful on first attempt"
+          else
+            echo "⚠️ First attempt failed, trying with --repo-update"
+            if pod install --repo-update --verbose; then
+              echo "✅ Pod install successful with repo update"
+            else
+              echo "⚠️ Second attempt failed, trying clean install"
+              rm -rf Pods Podfile.lock
+              if pod install --clean-install --verbose; then
+                echo "✅ Pod install successful with clean install"
+              else
+                echo "❌ All pod install attempts failed"
+                echo "--- Debug information ---"
+                ls -la
+                pod --version
+                which pod
+                echo "--- Attempting to continue without pods (using xcodeproj) ---"
+                cd ..
+                echo "USE_PROJECT_ONLY=true" >> $CM_ENV
+                exit 0
+              fi
+            fi
+          fi
           
           echo "--- Verifying installation ---"
-          if [ -d "Pods" ] && [ -f "Pods/Target Support Files/Pods-simpleiostodo/Pods-simpleiostodo.debug.xcconfig" ]; then
-            echo "✅ Pods and config files installed successfully"
-            ls -la "Pods/Target Support Files/Pods-simpleiostodo/"
-          else
-            echo "❌ Pods installation incomplete"
-            echo "Contents of ios directory:"
-            ls -la
-            if [ -d "Pods" ]; then
-              echo "Pods directory contents:"
-              find Pods -name "*.xcconfig" | head -10
+          if [ -d "Pods" ]; then
+            echo "✅ Pods directory created"
+            if [ -f "Pods/Target Support Files/Pods-simpleiostodo/Pods-simpleiostodo.debug.xcconfig" ]; then
+              echo "✅ Config files found"
+              ls -la "Pods/Target Support Files/Pods-simpleiostodo/"
+            else
+              echo "⚠️ Config files not found, but Pods exist"
+              find Pods -name "*.xcconfig" | head -5
             fi
-            exit 1
+          else
+            echo "❌ Pods installation failed"
+            ls -la
+            cd ..
+            echo "USE_PROJECT_ONLY=true" >> $CM_ENV
+            exit 0
           fi
           
           echo "--- Checking workspace creation ---"
           if [ -d "simpleiostodo.xcworkspace" ]; then
             echo "✅ Workspace created successfully"
           else
-            echo "❌ Workspace not created"
-            exit 1
+            echo "⚠️ Workspace not created, will use xcodeproj"
+            cd ..
+            echo "USE_PROJECT_ONLY=true" >> $CM_ENV
+            exit 0
           fi
           
           cd ..
@@ -146,8 +178,11 @@ workflows:
           echo "--- Building iOS Debug Version ---"
           mkdir -p build_logs/ios
           
-          # Determine build target
-          if [ -d "$XCODE_WORKSPACE" ]; then
+          # Determine build target based on what's available
+          if [ "$USE_PROJECT_ONLY" = "true" ]; then
+            echo "Using project only (no CocoaPods): ios/simpleiostodo.xcodeproj"
+            BUILD_TARGET="-project ios/simpleiostodo.xcodeproj"
+          elif [ -d "$XCODE_WORKSPACE" ]; then
             echo "Using workspace: $XCODE_WORKSPACE"
             BUILD_TARGET="-workspace $XCODE_WORKSPACE"
           elif [ -d "ios/simpleiostodo.xcodeproj" ]; then
@@ -159,7 +194,7 @@ workflows:
             exit 1
           fi
           
-          # Run the build with modern build system
+          # Run the build
           set -o pipefail && xcodebuild \
             $BUILD_TARGET \
             -scheme "$XCODE_SCHEME" \
@@ -171,6 +206,7 @@ workflows:
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
             ONLY_ACTIVE_ARCH=NO \
+            -quiet \
             | tee build_logs/ios/xcodebuild.log
           
           BUILD_RESULT=$?
@@ -191,6 +227,15 @@ workflows:
             if [ -d "ios/Pods" ]; then
               find ios/Pods -name "*.xcconfig" | head -5
             fi
+            
+            echo "--- Available schemes ---"
+            if [ "$USE_PROJECT_ONLY" = "true" ]; then
+              xcodebuild -project ios/simpleiostodo.xcodeproj -list
+            else
+              xcodebuild -workspace "$XCODE_WORKSPACE" -list
+            fi
+          else
+            echo "✅ iOS build completed successfully"
           fi
           
           exit $BUILD_RESULT
