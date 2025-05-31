@@ -9,7 +9,6 @@ workflows:
         XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
-        TEAM_ID: "YOUR_APPLE_DEVELOPER_TEAM_ID"  # ← Add your Apple Team ID here
       node: 20
       java: 17
       xcode: 15.0
@@ -60,27 +59,6 @@ workflows:
           npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
           npx eas-cli --version
 
-      - name: Generate iOS Export Options
-        script: |
-          cat > ios/exportOptions.plist <<EOL
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>development</string>
-              <key>teamID</key>
-              <string>$TEAM_ID</string>
-              <key>compileBitcode</key>
-              <false/>
-              <key>uploadBitcode</key>
-              <false/>
-              <key>uploadSymbols</key>
-              <false/>
-          </dict>
-          </plist>
-          EOL
-
       - name: Expo Prebuild (Android)
         script: |
           echo "--- Prebuild for Android ---"
@@ -106,37 +84,34 @@ workflows:
           pod install --repo-update --verbose
           cd ..
 
-      - name: Build iOS Development IPA
+      - name: Build iOS Development Version
         script: |
-          mkdir -p build/ios
-          
-          # Archive the app
-          xcodebuild archive \
+          set -o pipefail && xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
-            -archivePath build/ios/archive.xcarchive \
+            -destination 'generic/platform=iOS' \
+            -quiet \
             CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            | xcpretty
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            | xcpretty || true
 
-          # Export the IPA
-          xcodebuild -exportArchive \
-            -archivePath build/ios/archive.xcarchive \
-            -exportOptionsPlist ios/exportOptions.plist \
-            -exportPath build/ios/ \
-            | xcpretty
+          xcodebuild \
+            -workspace "$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild.log
 
-          # Verify IPA exists
-          ls -la build/ios/*.ipa
+          mkdir -p build_logs
+          mv xcodebuild.log build_logs/
 
     artifacts:
       - android/app/build/outputs/**/*.apk
-      - build/ios/*.ipa
       - android/app/build/**/*.log
-      - ios/build/**/*.log
       - build_logs/xcodebuild.log
+      - ios/build/**/*.log
 
     publishing:
       email:
