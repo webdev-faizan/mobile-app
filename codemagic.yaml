@@ -1,3 +1,4 @@
+---
 workflows:
   expo-multi-platform-build:
     name: Expo Multi-Platform Build
@@ -73,46 +74,48 @@ workflows:
 
       - name: Install CocoaPods (iOS)
         script: |
+          echo "--- Cleaning previous Pods installation ---"
+          rm -rf ios/Pods ios/Podfile.lock ios/simpleiostodo.xcworkspace
+          
           echo "--- Installing Pods ---"
           cd ios
-          
-          # Clean any existing installation
-          rm -rf Pods Podfile.lock
-          
-          # Install pods
           pod install --repo-update --verbose
           cd ..
           
-          echo "--- Pods directory contents ---"
-          ls -la ios/Pods/
-          
-          echo "--- iOS directory after pod install ---"
-          ls -la ios/
-          
-          # Verify workspace was created
-          if [ -d "ios/simpleiostodo.xcworkspace" ]; then
-            echo "✅ Workspace found: ios/simpleiostodo.xcworkspace"
+          echo "--- Verifying Pods installation ---"
+          if [ -d "ios/Pods" ]; then
+            echo "✅ Pods installed successfully"
           else
-            echo "❌ Workspace not found, checking for xcodeproj"
+            echo "❌ Pods installation failed"
+            exit 1
+          fi
+          
+          echo "--- Checking workspace ---"
+          if [ -d "ios/simpleiostodo.xcworkspace" ]; then
+            echo "✅ Workspace created successfully"
+          else
+            echo "⚠️ Workspace not found, falling back to xcodeproj"
             if [ -d "ios/simpleiostodo.xcodeproj" ]; then
-              echo "Found xcodeproj, will use that instead"
+              echo "ℹ️ Using xcodeproj instead"
               echo "XCODE_PROJECT=ios/simpleiostodo.xcodeproj" >> $CM_ENV
               echo "USE_PROJECT=true" >> $CM_ENV
             else
-              echo "No valid Xcode project found!"
+              echo "❌ No valid Xcode project found!"
               exit 1
             fi
           fi
 
+      - name: Prepare iOS Build
+        script: |
+          echo "--- Preparing iOS Build ---"
+          cd ios
+          xcodebuild clean -workspace simpleiostodo.xcworkspace -scheme simpleiostodo
+          cd ..
+          rm -rf ios/build
+
       - name: Build iOS Debug Version
         script: |
           echo "--- Building iOS Debug Version ---"
-          
-          # Verify what we're working with
-          echo "iOS directory contents:"
-          ls -la ios/
-          
-          # Create build logs directory
           mkdir -p build_logs/ios
           
           # Determine build target
@@ -124,27 +127,34 @@ workflows:
             BUILD_TARGET="-workspace $XCODE_WORKSPACE"
           else
             echo "Error: No valid workspace or project found"
-            echo "Workspace path: $XCODE_WORKSPACE"
-            echo "Project path: $XCODE_PROJECT"
             exit 1
           fi
           
-          # Run the build
+          # Run the build with full logging
           set -o pipefail && xcodebuild \
             $BUILD_TARGET \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
-            | tee build_logs/ios/xcodebuild.log | xcpretty
+            -UseModernBuildSystem=NO \
+            | tee build_logs/ios/xcodebuild.log
           
-          # Capture build result
           BUILD_RESULT=$?
           
-          # Save result bundle if it exists
+          # Save build artifacts
           if ls /var/folders/*/T/ResultBundle_* 1> /dev/null 2>&1; then
             mv /var/folders/*/T/ResultBundle_* build_logs/ios/ || true
+          fi
+          
+          # Print last 100 lines of log if build failed
+          if [ $BUILD_RESULT -ne 0 ]; then
+            echo "--- Last 100 lines of build log ---"
+            tail -n 100 build_logs/ios/xcodebuild.log
+            echo "--- Build failed with error code $BUILD_RESULT ---"
           fi
           
           exit $BUILD_RESULT
@@ -161,9 +171,10 @@ workflows:
     artifacts:
       - build_logs/**/*
       - ios/build/**/*.log
+      - ios/build/**/*.xcactivitylog
+      - ios/Podfile.lock
+      - ios/Pods/Manifest.lock
       - android/app/build/outputs/**/*.apk
-      - ios
-      - android
 
     publishing:
       email:
