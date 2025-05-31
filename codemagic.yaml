@@ -1,15 +1,15 @@
 workflows:
-  expo-ios-build:
-    name: Expo iOS Build
+  expo-ios-production:
+    name: Expo iOS Production Build
     instance_type: mac_mini_m2
     working_directory: .
     environment:
       vars:
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"  # Expo generates this
-        XCODE_SCHEME: "simple-ios-todo"                    # Your Expo app name
-        BUNDLE_ID: "com.anonymous.simpleiostodo"           # From your app.json
+        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
+        XCODE_SCHEME: "simple-ios-todo"
+        BUNDLE_ID: "com.anonymous.simpleiostodo"
       node: 18
-      xcode: latest
+      xcode: 15.0
       cocoapods: default
     
     cache:
@@ -17,7 +17,8 @@ workflows:
         - ~/Library/Caches/CocoaPods
         - ios/Pods
         - node_modules
-        - $HOME/.npm
+        - $HOME/.yarn/cache
+        - $HOME/.yarn/berry/cache
     
     triggering:
       events:
@@ -28,28 +29,34 @@ workflows:
           source: true
     
     scripts:
-      - name: Install Expo CLI
+      - name: Install Yarn and dependencies
         script: |
-          echo "--- Setting up Expo environment ---"
-          npm install -g expo-cli eas-cli
-          npm ci
+          echo "--- Setting up Yarn ---"
+          npm install -g yarn
+          yarn set version stable
+          yarn install --frozen-lockfile --network-timeout 600000
+          yarn global add expo-cli eas-cli
           
-      - name: Prebuild iOS files
+      - name: Expo Prebuild
         script: |
-          echo "--- Generating iOS native files ---"
-          eas prebuild --platform ios
+          echo "--- Generating iOS Native Code ---"
+          eas prebuild --platform ios --non-interactive
+          
+      - name: Install CocoaPods
+        script: |
+          echo "--- Installing Pods ---"
           cd ios
           pod install --repo-update --verbose
           
-      - name: Configure development build
+      - name: Configure Build
         script: |
-          echo "--- Configuring development build ---"
+          echo "--- Configuring Build ---"
           cd ios
           agvtool new-version -all $BUILD_NUMBER
           
       - name: Build IPA
         script: |
-          echo "--- Building Development IPA ---"
+          echo "--- Building Production IPA ---"
           xcode-project build-ipa \
             --workspace "$XCODE_WORKSPACE" \
             --scheme "$XCODE_SCHEME" \
@@ -62,9 +69,10 @@ workflows:
     
     publishing:
       scripts:
-        - name: Clean up
-          script: |
-            rm -rf ios/build
+        - name: Clean up build artifacts
+          script: rm -rf ios/build
       email:
         recipients:
-          - webdev.faizanali@gmail.com  # Change to your email
+          - webdev.faizanali@gmail.com
+      slack:
+        channel: "#build-notifications"
