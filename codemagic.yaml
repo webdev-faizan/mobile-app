@@ -150,11 +150,4 @@ workflows:
         notify:
           success: true
           failure: true
-      slack:
-        channel: "#build-notifications"
-        notify_on_build_start: true
-        notify:
-          success: 
-            message: "✅ iOS Simulator build succeeded! Download artifacts from: $CM_ARTIFACT_LINKS"
-          failure:
-            message: "❌ iOS Simulator build failed! Check logs: $CM_BUILD_URL"
+    
