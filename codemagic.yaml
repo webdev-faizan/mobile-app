@@ -1,13 +1,18 @@
 workflows:
-  expo-android-development:
-    name: Expo Android Development Build
+  expo-development-build:
+    name: Expo Development Build (Android & iOS)
     instance_type: mac_mini_m2
     working_directory: .
     environment:
       vars:
         BUILD_NUMBER: "1"
+        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
+        XCODE_SCHEME: "simple-ios-todo"
+        BUNDLE_ID: "com.anonymous.simpleiostodo"
       node: 20
       java: 17
+      xcode: 15.0
+      cocoapods: default
 
     cache:
       cache_paths:
@@ -15,6 +20,8 @@ workflows:
         - .yarn/cache
         - .yarn/install-state.gz
         - .yarn/unplugged
+        - ~/Library/Caches/CocoaPods
+        - ios/Pods
 
     triggering:
       events:
@@ -35,127 +42,50 @@ workflows:
           npm -v
           echo "--- Java version ---"
           java -version
+          echo "--- Xcode version ---"
+          xcodebuild -version
+          echo "--- CocoaPods version ---"
+          pod --version
           echo "--- Android SDK location ---"
           echo $ANDROID_SDK_ROOT
 
       - name: Install Dependencies
         script: |
-          echo "--- Cleaning npm cache ---"
           npm cache clean --force
-          echo "--- Installing Yarn dependencies ---"
           yarn install --network-timeout 600000 --ignore-engines
 
       - name: Setup EAS CLI
         script: |
-          echo "--- Installing EAS CLI ---"
           npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
-          echo "--- EAS CLI version ---"
           npx eas-cli --version
 
-      - name: Expo Prebuild
+      - name: Expo Prebuild (Android)
         script: |
-          echo "--- Generating Android Native Code ---"
+          echo "--- Prebuild for Android ---"
           npx expo prebuild --platform android --non-interactive
-          echo "--- Prebuild contents verification ---"
           ls -la android/
 
       - name: Build Android Development APK
         script: |
-          echo "--- Building Development APK ---"
           cd android
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
           cd ..
           echo "--- APK Build Complete ---"
 
-    artifacts:
-      - android/app/build/outputs/**/*.apk
-      - android/app/build/**/*.log
-
-    publishing:
-      email:
-        recipients:
-          - webdev.faizanali@gmail.com
-      slack:
-        channel: "#build-notifications"
-
-  expo-ios-development:
-    name: Expo iOS Development Build
-    instance_type: mac_mini_m2
-    working_directory: .
-    environment:
-      vars:
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
-        XCODE_SCHEME: "simple-ios-todo"
-        BUNDLE_ID: "com.anonymous.simpleiostodo"
-        BUILD_NUMBER: "1"
-      node: 20
-      xcode: 15.0
-      cocoapods: default
-
-    cache:
-      cache_paths:
-        - ~/Library/Caches/CocoaPods
-        - ios/Pods
-        - node_modules
-        - .yarn/cache
-        - .yarn/install-state.gz
-        - .yarn/unplugged
-
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: "master*"
-          include: true
-          source: true
-
-    scripts:
-      - name: Setup Environment
+      - name: Expo Prebuild (iOS)
         script: |
-          echo "--- Node version ---"
-          node -v
-          echo "--- Yarn version ---"
-          yarn -v
-          echo "--- npm version ---"
-          npm -v
-          echo "--- Xcode version ---"
-          xcodebuild -version
-          echo "--- CocoaPods version ---"
-          pod --version
-
-      - name: Install Dependencies
-        script: |
-          echo "--- Cleaning npm cache ---"
-          npm cache clean --force
-          echo "--- Installing Yarn dependencies ---"
-          yarn install --network-timeout 600000 --ignore-engines
-
-      - name: Setup EAS CLI
-        script: |
-          echo "--- Installing EAS CLI ---"
-          npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
-          echo "--- EAS CLI version ---"
-          npx eas-cli --version
-
-      - name: Expo Prebuild
-        script: |
-          echo "--- Generating iOS Native Code ---"
+          echo "--- Prebuild for iOS ---"
           npx expo prebuild --platform ios --non-interactive
-          echo "--- Prebuild contents verification ---"
           ls -la ios/
 
       - name: Install CocoaPods
         script: |
-          echo "--- Installing Pods ---"
           cd ios
           pod install --repo-update --verbose
           cd ..
-          echo "--- Pods directory contents ---"
-          ls -la ios/Pods/
 
-      - name: Build Development Version
+      - name: Build iOS Development Version
         script: |
-          echo "--- Building Development Version ---"
           set -o pipefail && xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
@@ -164,10 +94,8 @@ workflows:
             -quiet \
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
-            | xcpretty
+            | xcpretty || true
 
-          # Alternative approach if the above fails
-          echo "--- Fallback: Detailed build logs ---"
           xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
@@ -176,11 +104,12 @@ workflows:
             CODE_SIGNING_ALLOWED=NO \
             | tee xcodebuild.log
 
-          # Save the full build logs as artifact
           mkdir -p build_logs
           mv xcodebuild.log build_logs/
 
     artifacts:
+      - android/app/build/outputs/**/*.apk
+      - android/app/build/**/*.log
       - build_logs/xcodebuild.log
       - ios/build/**/*.log
 
