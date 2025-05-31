@@ -6,8 +6,8 @@ workflows:
     environment:
       vars:
         BUILD_NUMBER: "1"
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
-        XCODE_SCHEME: "simple-ios-todo"
+        XCODE_WORKSPACE: "ios/simpleiostodo.xcworkspace"
+        XCODE_SCHEME: "simpleiostodo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
       node: 20
       java: 17
@@ -21,7 +21,8 @@ workflows:
         - .yarn/install-state.gz
         - .yarn/unplugged
         - ~/Library/Caches/CocoaPods
-        - ios/Pods
+        # Remove ios/Pods from cache to force fresh install
+        # - ios/Pods
 
     triggering:
       events:
@@ -34,22 +35,16 @@ workflows:
     scripts:
       - name: Setup Environment
         script: |
-          echo "--- Node version ---"
+          echo "--- Environment Setup ---"
           node -v
-          echo "--- Yarn version ---"
           yarn -v
-          echo "--- npm version ---"
           npm -v
-          echo "--- Java version ---"
           java -version
-          echo "--- Xcode version ---"
           xcodebuild -version
-          echo "--- CocoaPods version ---"
           pod --version
-          echo "--- Android SDK location ---"
           echo $ANDROID_SDK_ROOT
 
-      - name: Install Dependencies
+      - name: Clean and Install Dependencies
         script: |
           npm cache clean --force
           yarn install --network-timeout 600000 --ignore-engines
@@ -62,30 +57,83 @@ workflows:
       - name: Expo Prebuild (Android)
         script: |
           echo "--- Prebuild for Android ---"
-          npx expo prebuild --platform android --non-interactive
+          npx expo prebuild --platform android --non-interactive --clear
           ls -la android/
 
       - name: Build Android Development APK
         script: |
           cd android
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          chmod +x gradlew
+          ./gradlew clean :app:assembleDebug --no-daemon --stacktrace
           cd ..
           echo "--- APK Build Complete ---"
+
+      - name: Clean iOS Build Environment
+        script: |
+          echo "--- Cleaning iOS Environment ---"
+          rm -rf ios/Pods ios/Podfile.lock
+          pod cache clean --all
 
       - name: Expo Prebuild (iOS)
         script: |
           echo "--- Prebuild for iOS ---"
-          npx expo prebuild --platform ios --non-interactive
+          npx expo prebuild --platform ios --non-interactive --clear
           ls -la ios/
 
-      - name: Install CocoaPods
+      - name: Install CocoaPods with Retry Logic
         script: |
           cd ios
-          pod install --repo-update --verbose
+          # Try installing pods with retry logic
+          max_attempts=3
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "--- Pod Install Attempt $attempt ---"
+            
+            if pod install --repo-update --verbose; then
+              echo "--- Pod Install Successful ---"
+              break
+            else
+              echo "--- Pod Install Failed (Attempt $attempt) ---"
+              
+              if [ $attempt -eq $max_attempts ]; then
+                echo "--- All Pod Install Attempts Failed ---"
+                exit 1
+              fi
+              
+              # Clean up and try again
+              rm -rf Pods Podfile.lock
+              pod cache clean --all
+              pod repo update
+              
+              attempt=$((attempt + 1))
+              sleep 30
+            fi
+          done
+          
           cd ..
 
       - name: Build iOS Development Version
         script: |
+          # Create export options plist if it doesn't exist
+          if [ ! -f ios/exportOptions.plist ]; then
+            cat > ios/exportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>development</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>signingStyle</key>
+            <string>automatic</string>
+          </dict>
+          </plist>
+          EOF
+          fi
+
+          # Build archive
           set -o pipefail && xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
@@ -95,6 +143,7 @@ workflows:
             CODE_SIGNING_ALLOWED=NO \
             | xcpretty || true
 
+          # Export IPA
           xcodebuild \
             -exportArchive \
             -archivePath ios/build/App.xcarchive \
@@ -104,7 +153,7 @@ workflows:
             | tee xcodebuild.log
 
           mkdir -p build_logs
-          mv xcodebuild.log build_logs/
+          mv xcodebuild.log build_logs/ || true
 
     artifacts:
       - android/app/build/outputs/**/*.apk
