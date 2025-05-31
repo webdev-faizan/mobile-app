@@ -7,9 +7,8 @@ workflows:
       vars:
         XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
-        BUNDLE_ID: "com.anonymous.simpleiostodo.dev"  # Different bundle ID for dev
-        BUILD_NUMBER: "$BUILD_NUMBER"  # Use CI build number for uniqueness
-        CONFIGURATION: "Debug"  # Debug configuration for development
+        BUNDLE_ID: "com.anonymous.simpleiostodo"
+        BUILD_NUMBER: "1"
       node: 20
       xcode: 15.0
       cocoapods: default
@@ -22,30 +21,18 @@ workflows:
         - .yarn/cache
         - .yarn/install-state.gz
         - .yarn/unplugged
-        - ~/Library/Developer/Xcode/DerivedData  # Cache Xcode build data
 
     triggering:
       events:
         - push
-        - pull_request  # Also trigger on PRs for development
       branch_patterns:
-        - pattern: "develop"  # Trigger on develop branch
-          include: true
-          source: true
-        - pattern: "feature/*"  # Trigger on feature branches
-          include: true
-          source: true
-        - pattern: "main"  # Keep main for hotfixes
+        - pattern: "dev*"  # Changed to trigger on development branches
           include: true
           source: true
 
     scripts:
       - name: Setup Environment
         script: |
-          echo "--- Build Information ---"
-          echo "Branch: $CM_BRANCH"
-          echo "Build Number: $BUILD_NUMBER"
-          echo "Configuration: $CONFIGURATION"
           echo "--- Node version ---"
           node -v
           echo "--- Yarn version ---"
@@ -55,8 +42,10 @@ workflows:
 
       - name: Install Dependencies
         script: |
+          echo "--- Cleaning npm cache ---"
+          npm cache clean --force
           echo "--- Installing Yarn dependencies ---"
-          yarn install --network-timeout 300000 --ignore-engines --frozen-lockfile
+          yarn install --network-timeout 600000 --ignore-engines
 
       - name: Setup EAS CLI
         script: |
@@ -65,146 +54,30 @@ workflows:
           echo "--- EAS CLI version ---"
           npx eas-cli --version
 
-      - name: Expo Prebuild for Development
+      - name: Expo Prebuild
         script: |
-          echo "--- Generating iOS Native Code for Development ---"
-          # Use development profile for faster builds
-          npx expo prebuild --platform ios --non-interactive --clear || {
-            echo "Fallback to eas-cli if expo prebuild fails"
-            npx eas-cli prebuild --platform ios --non-interactive --clear
-          }
+          echo "--- Generating iOS Native Code ---"
+          npx expo prebuild --platform ios --non-interactive
 
       - name: Install CocoaPods
         script: |
           echo "--- Installing Pods ---"
           cd ios
-          # Skip repo update for faster builds in development
-          pod install --verbose
+          pod install --repo-update --verbose
           cd ..
 
-      - name: Configure Development Build
+      - name: Build Development Version
         script: |
-          echo "--- Configuring Development Build ---"
-          cd ios
-          # Set build number for development
-          agvtool new-version -all $BUILD_NUMBER
-          # Enable development settings
-          echo "Setting up development configuration..."
-          cd ..
-
-      - name: Build Development IPA
-        script: |
-          echo "--- Building Development IPA ---"
-          xcode-project build-ipa \
+          echo "--- Building Development Version ---"
+          xcode-project build \
             --workspace "$XCODE_WORKSPACE" \
             --scheme "$XCODE_SCHEME" \
-            --configuration "$CONFIGURATION" \
-            --disable-codesigning \
-            --archive-flags "-allowProvisioningUpdates" \
-            --export-options-plist ios/ExportOptions-Development.plist
-
-      - name: Generate Build Info
-        script: |
-          echo "--- Generating Build Information ---"
-          cat > build-info.json << EOF
-          {
-            "branch": "$CM_BRANCH",
-            "buildNumber": "$BUILD_NUMBER",
-            "configuration": "$CONFIGURATION",
-            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "commit": "$CM_COMMIT"
-          }
-          EOF
-
-    artifacts:
-      - build/ios/ipa/*.ipa
-      - ios/build/**/*.dSYM
-      - build-info.json
-      - ios/build/**/*.app  # Include .app for simulator testing
+            --configuration "Debug" \
+            --disable-codesigning
 
     publishing:
-      scripts:
-        - name: Upload to Development Distribution
-          script: |
-            echo "--- Development Build Complete ---"
-            echo "Build available for testing and development"
-            # Add any development-specific distribution logic here
-        - name: Clean up build artifacts (optional)
-          script: |
-            # Only clean if storage is a concern, otherwise keep for debugging
-            echo "Keeping build artifacts for development debugging"
-            # rm -rf ios/build
-      
       email:
         recipients:
           - webdev.faizanali@gmail.com
-        notify:
-          success: true
-          failure: true
-      
       slack:
-        channel: "#dev-builds"
-        notify:
-          success: true
-          failure: true
-
-  # Quick development build for rapid iteration
-  expo-ios-quick-dev:
-    name: Quick iOS Development Build
-    instance_type: mac_mini_m2
-    working_directory: .
-    environment:
-      vars:
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
-        XCODE_SCHEME: "simple-ios-todo"
-        BUNDLE_ID: "com.anonymous.simpleiostodo.dev"
-        BUILD_NUMBER: "$BUILD_NUMBER"
-        CONFIGURATION: "Debug"
-      node: 20
-      xcode: 15.0
-      cocoapods: default
-
-    cache:
-      cache_paths:
-        - ~/Library/Caches/CocoaPods
-        - ios/Pods
-        - node_modules
-        - .yarn/cache
-        - ~/Library/Developer/Xcode/DerivedData
-
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: "feature/quick-*"  # Special pattern for quick builds
-          include: true
-          source: true
-
-    scripts:
-      - name: Quick Setup
-        script: |
-          echo "--- Quick Development Build ---"
-          node -v && yarn -v
-
-      - name: Install Dependencies (Cached)
-        script: |
-          yarn install --prefer-offline --frozen-lockfile
-
-      - name: Quick Build
-        script: |
-          echo "--- Quick Build (Debug only) ---"
-          cd ios
-          xcodebuild build \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15' \
-            CODE_SIGNING_ALLOWED=NO
-
-    artifacts:
-      - ios/build/**/*.app
-
-    publishing:
-      slack:
-        channel: "#dev-builds"
+        channel: "#build-notifications"
