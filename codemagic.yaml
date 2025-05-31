@@ -1,82 +1,133 @@
 workflows:
-  maui-ios-build:
-    name: .NET MAUI iOS Build
-    max_build_duration: 120
+  expo-development-build:
+    name: Expo Development Build (Android & iOS)
     instance_type: mac_mini_m2
+    working_directory: .
     environment:
-      xcode: latest
       vars:
-        DOTNET_PATH: $CM_BUILD_DIR/dotnet
-        DOTNET: $CM_BUILD_DIR/dotnet/dotnet
-        PATH: $CM_BUILD_DIR/dotnet:$PATH
+        BUILD_NUMBER: "1"
+        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
+        XCODE_SCHEME: "simple-ios-todo"
+        BUNDLE_ID: "com.anonymous.simpleiostodo"
+        # EXPO_TOKEN removed - no login required for development builds
+      node: 20
+      java: 17
+      xcode: 15.0
+      cocoapods: default
+
+    cache:
+      cache_paths:
+        - node_modules
+        - .yarn/cache
+        - .yarn/install-state.gz
+        - .yarn/unplugged
+        - ~/Library/Caches/CocoaPods
+        - ios/Pods
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: "master*"
+          include: true
+          source: true
 
     scripts:
-      # Initial setup
-      - name: Show environment info
+      - name: Setup Environment
         script: |
-          echo "Build directory: $CM_BUILD_DIR"
-          echo "Working directory: $(pwd)"
-          echo "Directory contents:"
-          ls -la
+          echo "--- Node version ---"
+          node -v
+          echo "--- Yarn version ---"
+          yarn -v
+          echo "--- npm version ---"
+          npm -v
+          echo "--- Java version ---"
+          java -version
+          echo "--- Xcode version ---"
+          xcodebuild -version
+          echo "--- CocoaPods version ---"
+          pod --version
+          echo "--- Android SDK location ---"
+          echo $ANDROID_SDK_ROOT
 
-      # .NET SDK installation
-      - name: Install .NET 7 SDK
+      - name: Install Dependencies
         script: |
-          wget https://dot.net/v1/dotnet-install.sh
-          chmod +x dotnet-install.sh
-          ./dotnet-install.sh --channel 7.0 --install-dir $DOTNET_PATH
-          $DOTNET --version
+          npm cache clean --force
+          yarn install --network-timeout 600000 --ignore-engines
 
-      # MAUI workload installation
-      - name: Install MAUI workloads
+      - name: Setup Expo CLI
         script: |
-          $DOTNET workload install maui \
-            --source "https://aka.ms/dotnet7/nuget/index.json" \
-            --source "https://api.nuget.org/v3/index.json"
-          $DOTNET workload list
+          npm install -g @expo/cli@latest --no-audit --fund=false --omit=optional
+          npx expo --version
 
-      # Project build
-      - name: Build MAUI iOS app
+      - name: Build Android (Local)
         script: |
-          # Create artifacts directory
-          mkdir -p artifacts
+          echo "--- Building Android APK locally ---"
+          npx expo prebuild --platform android --non-interactive
+          cd android
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          cd ..
+
+      - name: Build iOS (Local)
+        script: |
+          echo "--- Building iOS Simulator locally ---"
+          npx expo prebuild --platform ios --non-interactive
+          cd ios
+          pod install --repo-update --verbose
+          cd ..
           
-          # Find and build the MAUI project
-          if [ -f "*.sln" ]; then
-            echo "Building solution file..."
-            $DOTNET build *.sln -f net7.0-ios -c Debug -p:BuildIpa=true -o ./artifacts
-          elif [ -f "MauiApp/*.csproj" ]; then
-            echo "Building MAUI project..."
-            cd MauiApp
-            $DOTNET build -f net7.0-ios -c Debug -p:BuildIpa=true -o ../artifacts
-          else
-            echo "ERROR: No MAUI project found!"
-            echo "Looking for:"
-            echo "- Any .sln file in root"
-            echo "- MauiApp/*.csproj"
-            echo "Current contents:"
-            ls -la
-            exit 1
+          # Build for iOS Simulator
+          xcodebuild \
+            -workspace "$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO
+          
+          # Create simulator app bundle
+          mkdir -p ios_simulator_build
+          if [ -d "ios/build/Build/Products/Debug-iphonesimulator" ]; then
+            cp -R ios/build/Build/Products/Debug-iphonesimulator/*.app ios_simulator_build/ || echo "No .app found"
+            # Package simulator build for easier download
+            cd ios_simulator_build
+            tar -czf ../ios-simulator-build.tar.gz *.app
+            cd ..
           fi
 
-          # Verify build output
-          echo "Build artifacts:"
-          find artifacts -type f
+      - name: Verify Build Artifacts
+        script: |
+          echo "--- Verifying build artifacts ---"
+          echo "Android APK files:"
+          find . -name "*.apk" -type f
+          echo "iOS Simulator builds:"
+          find . -name "*.app" -type d
+          find . -name "*.tar.gz" -type f
+          echo "Build directories:"
+          ls -la android/app/build/outputs/apk/debug/ || echo "No Android debug APK directory"
+          ls -la ios_simulator_build/ || echo "No iOS simulator build directory"
 
     artifacts:
-      - ./artifacts/**/*.app
-      - ./artifacts/**/*.ipa
-      - ./artifacts/**/*.dll
-      - ./artifacts/**/*.pdb
+      # Local build artifacts
+      - android/app/build/outputs/**/*.apk
+      - android/app/build/**/*.log
+      - ios_simulator_build/*.app
+      - ios-simulator-build.tar.gz
+      # Build logs
+      - ios/build/**/*.log
+      - build_logs/**
 
     publishing:
-      scripts:
-        - name: Verify iOS app bundle
-          script: |
-            if find artifacts -name "*.app" | grep -q .; then
-              echo "iOS app bundle found:"
-              find artifacts -name "*.app"
-            else
-              echo "ERROR: No .app bundle found in artifacts!"
-              exit 1
-            fi
+      email:
+        recipients:
+          - webdev.faizanali@gmail.com
+        notify:
+          success: true
+          failure: true
+      slack:
+        channel: "#build-notifications"
+        notify_on_build_start: true
+        notify:
+          success: true
+          failure: true
