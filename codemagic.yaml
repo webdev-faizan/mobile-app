@@ -9,9 +9,9 @@ workflows:
         XCODE_SCHEME: "simple-ios-todo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
       node: 22
-      xcode: 15.0
+      xcode: 16.0
       cocoapods: default
-    
+
     cache:
       cache_paths:
         - ~/Library/Caches/CocoaPods
@@ -20,7 +20,7 @@ workflows:
         - .yarn/cache
         - .yarn/install-state.gz
         - .yarn/unplugged
-    
+
     triggering:
       events:
         - push
@@ -28,34 +28,31 @@ workflows:
         - pattern: "main"
           include: true
           source: true
-    
+
     scripts:
-      - name: Install Yarn and dependencies
+      - name: Install dependencies
         script: |
-          echo "--- Setting up Yarn ---"
-          npm install -g yarn
-          yarn set version berry
-          yarn config set nodeLinker node-modules
+          echo "--- Installing dependencies with Yarn Classic ---"
           yarn install --network-timeout 600000
           yarn global add expo-cli eas-cli
-          
+
       - name: Expo Prebuild
         script: |
           echo "--- Generating iOS Native Code ---"
           eas prebuild --platform ios --non-interactive
-          
+
       - name: Install CocoaPods
         script: |
           echo "--- Installing Pods ---"
           cd ios
           pod install --repo-update --verbose
-          
+
       - name: Configure Build
         script: |
           echo "--- Configuring Build ---"
           cd ios
           agvtool new-version -all $BUILD_NUMBER
-          
+
       - name: Build IPA
         script: |
           echo "--- Building Production IPA ---"
@@ -68,7 +65,7 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - ios/build/**/*.dSYM
-    
+
     publishing:
       scripts:
         - name: Clean up build artifacts
