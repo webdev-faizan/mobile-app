@@ -9,16 +9,13 @@ workflows:
         BUILD_NUMBER: "1"
         ANDROID_PROJECT_DIR: "android"
         ANDROID_BUILD_TYPE: "Debug"
-        XCODE_WORKSPACE: "ios/simpleiostodo.xcworkspace"
+        XCODE_PROJECT: "ios/simpleiostodo.xcodeproj"
         XCODE_SCHEME: "simpleiostodo"
       node: 20
       xcode: 15.0
-      cocoapods: default
 
     cache:
       cache_paths:
-        - ~/Library/Caches/CocoaPods
-        - ios/Pods
         - node_modules
         - .yarn/cache
         - .yarn/install-state.gz
@@ -37,170 +34,44 @@ workflows:
     scripts:
       - name: Setup Environment
         script: |
-          echo "--- Node version ---"
+          echo "--- Environment Setup ---"
           node -v
-          echo "--- Yarn version ---"
           yarn -v
-          echo "--- npm version ---"
           npm -v
-          echo "--- Xcode version ---"
           xcodebuild -version
-          echo "--- CocoaPods version ---"
-          pod --version
-          echo "--- Java version ---"
-          java -version
 
       - name: Install Dependencies
         script: |
-          echo "--- Cleaning npm cache ---"
+          echo "--- Installing Dependencies ---"
           npm cache clean --force
-          echo "--- Installing Yarn dependencies ---"
           yarn install --network-timeout 600000 --ignore-engines
 
       - name: Setup EAS CLI
         script: |
           echo "--- Installing EAS CLI ---"
-          npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
-          echo "--- EAS CLI version ---"
+          npm install -g eas-cli@latest
           npx eas-cli --version
 
-      - name: Expo Prebuild
+      - name: Generate Native Code
         script: |
-          echo "--- Generating Native Code ---"
+          echo "--- Generating Native Projects ---"
           npx expo prebuild --platform all --non-interactive --clean
-          echo "--- Prebuild contents verification ---"
+          
+          echo "--- Verifying generated files ---"
           ls -la ios/
-          echo "--- Checking if Podfile exists ---"
-          if [ -f "ios/Podfile" ]; then
-            echo "✅ Podfile found"
-            cat ios/Podfile
-          else
-            echo "❌ Podfile not found"
-          fi
+          ls -la android/
 
-      - name: Install CocoaPods (iOS)
+      - name: Build iOS (Direct)
         script: |
-          echo "--- Cleaning previous installations ---"
-          rm -rf ios/Pods ios/Podfile.lock ios/simpleiostodo.xcworkspace
-          
-          echo "--- CocoaPods setup ---"
-          # Don't update the entire repo as it's time-consuming and can fail
-          # pod repo update
-          
-          echo "--- Installing Pods ---"
-          cd ios
-          
-          # Ensure Podfile exists
-          if [ ! -f "Podfile" ]; then
-            echo "❌ Podfile not found! Running expo prebuild first..."
-            cd ..
-            npx expo prebuild --platform ios --clean
-            cd ios
-          fi
-          
-          echo "--- Checking Podfile content ---"
-          cat Podfile
-          
-          # Try installation with different approaches
-          echo "--- Attempting pod install (attempt 1) ---"
-          if pod install --verbose; then
-            echo "✅ Pod install successful on first attempt"
-          else
-            echo "⚠️ First attempt failed, trying with --repo-update"
-            if pod install --repo-update --verbose; then
-              echo "✅ Pod install successful with repo update"
-            else
-              echo "⚠️ Second attempt failed, trying clean install"
-              rm -rf Pods Podfile.lock
-              if pod install --clean-install --verbose; then
-                echo "✅ Pod install successful with clean install"
-              else
-                echo "❌ All pod install attempts failed"
-                echo "--- Debug information ---"
-                ls -la
-                pod --version
-                which pod
-                echo "--- Attempting to continue without pods (using xcodeproj) ---"
-                cd ..
-                echo "USE_PROJECT_ONLY=true" >> $CM_ENV
-                exit 0
-              fi
-            fi
-          fi
-          
-          echo "--- Verifying installation ---"
-          if [ -d "Pods" ]; then
-            echo "✅ Pods directory created"
-            if [ -f "Pods/Target Support Files/Pods-simpleiostodo/Pods-simpleiostodo.debug.xcconfig" ]; then
-              echo "✅ Config files found"
-              ls -la "Pods/Target Support Files/Pods-simpleiostodo/"
-            else
-              echo "⚠️ Config files not found, but Pods exist"
-              find Pods -name "*.xcconfig" | head -5
-            fi
-          else
-            echo "❌ Pods installation failed"
-            ls -la
-            cd ..
-            echo "USE_PROJECT_ONLY=true" >> $CM_ENV
-            exit 0
-          fi
-          
-          echo "--- Checking workspace creation ---"
-          if [ -d "simpleiostodo.xcworkspace" ]; then
-            echo "✅ Workspace created successfully"
-          else
-            echo "⚠️ Workspace not created, will use xcodeproj"
-            cd ..
-            echo "USE_PROJECT_ONLY=true" >> $CM_ENV
-            exit 0
-          fi
-          
-          cd ..
-
-      - name: Prepare iOS Build
-        script: |
-          echo "--- Preparing iOS Build ---"
-          cd ios
-          
-          # Clean previous builds
-          if [ -d "simpleiostodo.xcworkspace" ]; then
-            xcodebuild clean -workspace simpleiostodo.xcworkspace -scheme simpleiostodo
-          elif [ -d "simpleiostodo.xcodeproj" ]; then
-            xcodebuild clean -project simpleiostodo.xcodeproj -scheme simpleiostodo
-          fi
-          
-          cd ..
-          rm -rf ios/build
-
-      - name: Build iOS Debug Version
-        script: |
-          echo "--- Building iOS Debug Version ---"
+          echo "--- Building iOS Project Directly ---"
           mkdir -p build_logs/ios
           
-          # Determine build target based on what's available
-          if [ "$USE_PROJECT_ONLY" = "true" ]; then
-            echo "Using project only (no CocoaPods): ios/simpleiostodo.xcodeproj"
-            BUILD_TARGET="-project ios/simpleiostodo.xcodeproj"
-          elif [ -d "$XCODE_WORKSPACE" ]; then
-            echo "Using workspace: $XCODE_WORKSPACE"
-            BUILD_TARGET="-workspace $XCODE_WORKSPACE"
-          elif [ -d "ios/simpleiostodo.xcodeproj" ]; then
-            echo "Using project: ios/simpleiostodo.xcodeproj"
-            BUILD_TARGET="-project ios/simpleiostodo.xcodeproj"
-          else
-            echo "Error: No valid workspace or project found"
-            ls -la ios/
-            exit 1
-          fi
-          
-          # Run the build
+          # Build directly with xcodeproj (no CocoaPods)
           set -o pipefail && xcodebuild \
-            $BUILD_TARGET \
+            -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
-            -allowProvisioningUpdates \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -211,62 +82,31 @@ workflows:
           
           BUILD_RESULT=$?
           
-          # Save build artifacts
-          if ls /var/folders/*/T/ResultBundle_* 1> /dev/null 2>&1; then
-            mv /var/folders/*/T/ResultBundle_* build_logs/ios/ || true
-          fi
-          
-          # Print last 100 lines of log if build failed
           if [ $BUILD_RESULT -ne 0 ]; then
-            echo "--- Last 100 lines of build log ---"
-            tail -n 100 build_logs/ios/xcodebuild.log
-            echo "--- Build failed with error code $BUILD_RESULT ---"
-            
-            # Additional debugging
-            echo "--- Checking Pods configuration ---"
-            if [ -d "ios/Pods" ]; then
-              find ios/Pods -name "*.xcconfig" | head -5
-            fi
-            
+            echo "--- Build Log (last 50 lines) ---"
+            tail -n 50 build_logs/ios/xcodebuild.log
             echo "--- Available schemes ---"
-            if [ "$USE_PROJECT_ONLY" = "true" ]; then
-              xcodebuild -project ios/simpleiostodo.xcodeproj -list
-            else
-              xcodebuild -workspace "$XCODE_WORKSPACE" -list
-            fi
+            xcodebuild -project "$XCODE_PROJECT" -list
           else
-            echo "✅ iOS build completed successfully"
+            echo "✅ iOS build successful"
           fi
           
           exit $BUILD_RESULT
 
-      - name: Build Android Debug Version
+      - name: Build Android
         script: |
-          echo "--- Building Android Debug Version ---"
+          echo "--- Building Android ---"
           cd android
-          
-          # Make gradlew executable
           chmod +x ./gradlew
-          
-          # Clean and build
-          ./gradlew clean
-          ./gradlew assembleDebug --stacktrace --info
-          
+          ./gradlew clean assembleDebug --stacktrace
           cd ..
-          echo "--- APK location ---"
           find android -name "*.apk" -exec ls -la {} \;
 
     artifacts:
       - build_logs/**/*
-      - ios/build/**/*.log
-      - ios/build/**/*.xcactivitylog
-      - ios/Podfile.lock
-      - ios/Pods/Manifest.lock
       - android/app/build/outputs/**/*.apk
 
     publishing:
       email:
         recipients:
           - webdev.faizanali@gmail.com
-      slack:
-        channel: "#build-notifications"
