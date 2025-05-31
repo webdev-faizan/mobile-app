@@ -1,14 +1,19 @@
 workflows:
-  expo-ios-development:
-    name: Expo iOS Development Build
+  expo-multi-platform-build:
+    name: Expo Multi-Platform Build
     instance_type: mac_mini_m2
     working_directory: .
     environment:
       vars:
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
-        XCODE_SCHEME: "simple-ios-todo"
-        BUNDLE_ID: "com.anonymous.simpleiostodo"
+        # iOS specific vars
+        XCODE_WORKSPACE: "ios/SimpleTodo.xcworkspace"
+        XCODE_SCHEME: "SimpleTodo"
+        BUNDLE_ID: "com.anonymous.simpletodo"
         BUILD_NUMBER: "1"
+        
+        # Android specific vars
+        ANDROID_PROJECT_DIR: "android"
+        ANDROID_BUILD_TYPE: "Debug"
       node: 20
       xcode: 15.0
       cocoapods: default
@@ -21,6 +26,8 @@ workflows:
         - .yarn/cache
         - .yarn/install-state.gz
         - .yarn/unplugged
+        - android/.gradle
+        - $HOME/.gradle/caches
 
     triggering:
       events:
@@ -43,6 +50,8 @@ workflows:
           xcodebuild -version
           echo "--- CocoaPods version ---"
           pod --version
+          echo "--- Java version ---"
+          java -version
 
       - name: Install Dependencies
         script: |
@@ -60,17 +69,13 @@ workflows:
 
       - name: Expo Prebuild
         script: |
-          echo "--- Generating iOS Native Code ---"
-          npx expo prebuild --platform ios --non-interactive
+          echo "--- Generating Native Code ---"
+          npx expo prebuild --platform all --non-interactive
           echo "--- Prebuild contents verification ---"
           ls -la ios/
-          # Verify workspace exists
-          if [ ! -f "ios/simple-ios-todo.xcworkspace" ]; then
-            echo "Error: Workspace file not found at ios/simple-ios-todo.xcworkspace"
-            exit 1
-          fi
+          ls -la android/
 
-      - name: Install CocoaPods
+      - name: Install CocoaPods (iOS)
         script: |
           echo "--- Installing Pods ---"
           cd ios
@@ -79,19 +84,11 @@ workflows:
           echo "--- Pods directory contents ---"
           ls -la ios/Pods/
 
-      - name: Build Development Version
+      - name: Build iOS Debug Version
         script: |
-          echo "--- Building Development Version ---"
-          # Verify workspace path exists before building
-          if [ ! -d "ios/simple-ios-todo.xcworkspace" ]; then
-            echo "Error: Workspace not found at ios/simple-ios-todo.xcworkspace"
-            ls -la ios/
-            exit 1
-          fi
-
-          # Use full path to workspace
+          echo "--- Building iOS Debug Version ---"
           set -o pipefail && xcodebuild \
-            -workspace "ios/simple-ios-todo.xcworkspace" \
+            -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
@@ -100,24 +97,25 @@ workflows:
             COMPILER_INDEX_STORE_ENABLE=NO \
             | xcpretty
 
-          # Alternative approach if the above fails
-          echo "--- Fallback: Detailed build logs ---"
-          xcodebuild \
-            -workspace "ios/simple-ios-todo.xcworkspace" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            | tee xcodebuild.log
+          # Save logs if the build fails
+          mkdir -p build_logs/ios
+          mv /var/folders/*/T/ResultBundle_* build_logs/ios/ || true
 
-          # Save the full build logs as artifact
-          mkdir -p build_logs
-          mv xcodebuild.log build_logs/
+      - name: Build Android Debug Version
+        script: |
+          echo "--- Building Android Debug Version ---"
+          cd android
+          ./gradlew assembleDebug --stacktrace
+          cd ..
+          echo "--- APK location ---"
+          find android -name "*.apk" -exec ls -la {} \;
 
     artifacts:
-      - build_logs/xcodebuild.log
+      - build_logs/**/*
       - ios/build/**/*.log
+      - android/app/build/outputs/**/*.apk
       - ios
+      - android
 
     publishing:
       email:
