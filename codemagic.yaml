@@ -9,8 +9,7 @@ workflows:
         XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
-        # Add your EAS project details
-        EXPO_TOKEN: $EXPO_TOKEN # Add this to your Codemagic environment variables
+        # EXPO_TOKEN removed - no login required for development builds
       node: 20
       java: 17
       xcode: 15.0
@@ -56,131 +55,66 @@ workflows:
           npm cache clean --force
           yarn install --network-timeout 600000 --ignore-engines
 
-      - name: Setup EAS CLI
+      - name: Setup Expo CLI
         script: |
-          npm install -g eas-cli@latest @expo/cli@latest --no-audit --fund=false --omit=optional
-          npx eas-cli --version
+          npm install -g @expo/cli@latest --no-audit --fund=false --omit=optional
           npx expo --version
 
-      - name: Login to Expo
+      - name: Build Android (Local)
         script: |
-          if [ -n "$EXPO_TOKEN" ]; then
-            echo "Logging into Expo with token..."
-            npx eas login --non-interactive
-          else
-            echo "Warning: EXPO_TOKEN not set. Manual builds will be used."
-          fi
+          echo "--- Building Android APK locally ---"
+          npx expo prebuild --platform android --non-interactive
+          cd android
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          cd ..
 
-      - name: Build Android with EAS
+      - name: Build iOS (Local)
         script: |
-          echo "--- Building Android APK with EAS ---"
-          if [ -n "$EXPO_TOKEN" ]; then
-            npx eas build --platform android --profile development --non-interactive --wait
-            # Download the built APK
-            npx eas build:download --platform android --profile development
-          else
-            echo "Building Android manually..."
-            npx expo prebuild --platform android --non-interactive
-            cd android
-            ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          echo "--- Building iOS Simulator locally ---"
+          npx expo prebuild --platform ios --non-interactive
+          cd ios
+          pod install --repo-update --verbose
+          cd ..
+          
+          # Build for iOS Simulator
+          xcodebuild \
+            -workspace "$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO
+          
+          # Create simulator app bundle
+          mkdir -p ios_simulator_build
+          if [ -d "ios/build/Build/Products/Debug-iphonesimulator" ]; then
+            cp -R ios/build/Build/Products/Debug-iphonesimulator/*.app ios_simulator_build/ || echo "No .app found"
+            # Package simulator build for easier download
+            cd ios_simulator_build
+            tar -czf ../ios-simulator-build.tar.gz *.app
             cd ..
           fi
 
-      - name: Build iOS with EAS
+      - name: Verify Build Artifacts
         script: |
-          echo "--- Building iOS Simulator with EAS ---"
-          if [ -n "$EXPO_TOKEN" ]; then
-            npx eas build --platform ios --profile development --non-interactive --wait
-            # Download the built iOS simulator build
-            npx eas build:download --platform ios --profile development
-          else
-            echo "Building iOS manually for simulator..."
-            npx expo prebuild --platform ios --non-interactive
-            cd ios
-            pod install --repo-update --verbose
-            cd ..
-            
-            # Build for iOS Simulator
-            xcodebuild \
-              -workspace "$XCODE_WORKSPACE" \
-              -scheme "$XCODE_SCHEME" \
-              -configuration Debug \
-              -destination 'generic/platform=iOS Simulator' \
-              -derivedDataPath ios/build \
-              CODE_SIGNING_ALLOWED=NO \
-              COMPILER_INDEX_STORE_ENABLE=NO
-            
-            # Create simulator app bundle
-            mkdir -p ios_simulator_build
-            if [ -d "ios/build/Build/Products/Debug-iphonesimulator" ]; then
-              cp -R ios/build/Build/Products/Debug-iphonesimulator/*.app ios_simulator_build/ || echo "No .app found"
-            fi
-          fi
-
-      - name: Manual Fallback Build (Android)
-        script: |
-          if [ ! -f "*.apk" ] && [ -z "$EXPO_TOKEN" ]; then
-            echo "--- Manual Android Build Fallback ---"
-            if [ ! -d "android" ]; then
-              npx expo prebuild --platform android --non-interactive
-            fi
-            cd android
-            ./gradlew :app:assembleDebug --no-daemon --stacktrace
-            cd ..
-          fi
-
-      - name: Manual Fallback Build (iOS)
-        script: |
-          if [ ! -f "*.tar.gz" ] && [ -z "$EXPO_TOKEN" ]; then
-            echo "--- Manual iOS Build Fallback ---"
-            if [ ! -d "ios" ]; then
-              npx expo prebuild --platform ios --non-interactive
-            fi
-            cd ios
-            pod install --repo-update --verbose
-            cd ..
-            
-            # Build iOS for simulator
-            xcodebuild \
-              -workspace "$XCODE_WORKSPACE" \
-              -scheme "$XCODE_SCHEME" \
-              -configuration Debug \
-              -destination 'generic/platform=iOS Simulator' \
-              -derivedDataPath ios/build \
-              CODE_SIGNING_ALLOWED=NO \
-              | tee ios_build.log
-            
-            # Package simulator build
-            mkdir -p ios_simulator_build
-            if [ -d "ios/build/Build/Products/Debug-iphonesimulator" ]; then
-              cp -R ios/build/Build/Products/Debug-iphonesimulator/*.app ios_simulator_build/
-              cd ios_simulator_build
-              tar -czf ../ios-simulator-build.tar.gz *.app
-              cd ..
-            fi
-          fi
-
-      - name: List Build Artifacts
-        script: |
-          echo "--- Listing all potential artifacts ---"
+          echo "--- Verifying build artifacts ---"
+          echo "Android APK files:"
           find . -name "*.apk" -type f
-          find . -name "*.ipa" -type f
+          echo "iOS Simulator builds:"
           find . -name "*.app" -type d
           find . -name "*.tar.gz" -type f
-          ls -la || true
+          echo "Build directories:"
+          ls -la android/app/build/outputs/apk/debug/ || echo "No Android debug APK directory"
+          ls -la ios_simulator_build/ || echo "No iOS simulator build directory"
 
     artifacts:
-      # EAS Build artifacts
-      - "*.apk"
-      - "*.ipa"
-      - "*.tar.gz"
-      # Manual build artifacts
+      # Local build artifacts
       - android/app/build/outputs/**/*.apk
       - android/app/build/**/*.log
       - ios_simulator_build/*.app
       - ios-simulator-build.tar.gz
       # Build logs
-      - ios_build.log
       - ios/build/**/*.log
       - build_logs/**
 
