@@ -1,30 +1,26 @@
 workflows:
-  expo-multi-platform-development:
-    name: Expo Multi-Platform Development Build
+  expo-ios-development:
+    name: Expo iOS Development Build
     instance_type: mac_mini_m2
     working_directory: .
     environment:
       vars:
+        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
-        IOS_BUNDLE_ID: "com.anonymous.simpleiostodo"
-        ANDROID_PACKAGE: "com.anonymous.simpleiostodo"
+        BUNDLE_ID: "com.anonymous.simpleiostodo"
         BUILD_NUMBER: "1"
-        IOS_DEPLOYMENT_TARGET: "14.0"  # Updated to 14.0
       node: 20
       xcode: 15.0
       cocoapods: default
-      java: 17
 
     cache:
       cache_paths:
+        - ~/Library/Caches/CocoaPods
+        - ios/Pods
         - node_modules
         - .yarn/cache
         - .yarn/install-state.gz
         - .yarn/unplugged
-        - ~/Library/Caches/CocoaPods
-        - ios/Pods
-        - ~/.gradle/caches
-        - android/.gradle
 
     triggering:
       events:
@@ -45,8 +41,6 @@ workflows:
           npm -v
           echo "--- Xcode version ---"
           xcodebuild -version
-          echo "--- Java version ---"
-          java -version
           echo "--- CocoaPods version ---"
           pod --version
 
@@ -64,56 +58,27 @@ workflows:
           echo "--- EAS CLI version ---"
           npx eas-cli --version
 
-      - name: Expo Prebuild (iOS & Android)
+      - name: Expo Prebuild
         script: |
-          echo "--- Generating Native Code for Both Platforms ---"
-          npx expo prebuild --platform all --non-interactive --clean
-          echo "--- iOS Prebuild Contents ---"
+          echo "--- Generating iOS Native Code ---"
+          npx expo prebuild --platform ios --non-interactive
+          echo "--- Prebuild contents verification ---"
           ls -la ios/
-          echo "--- Android Prebuild Contents ---"
-          ls -la android/
 
-      - name: Update iOS Deployment Targets
-        script: |
-          echo "--- Checking for Podfile ---"
-          if [ ! -f "ios/Podfile" ]; then
-            echo "Error: ios/Podfile not found after prebuild!"
-            ls -la ios/
-            exit 1
-          fi
-          
-          echo "--- Updating iOS Deployment Target to $IOS_DEPLOYMENT_TARGET ---"
-          # Update Podfile
-          sed -i '' "s/platform :ios, .*/platform :ios, '$IOS_DEPLOYMENT_TARGET'/" ios/Podfile
-          echo "--- Updated Podfile content ---"
-          grep "platform :ios" ios/Podfile
-
-          # Update project.pbxproj files
-          echo "--- Updating Xcode project deployment targets ---"
-          find ios -name '*.pbxproj' -exec sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = .*/IPHONEOS_DEPLOYMENT_TARGET = $IOS_DEPLOYMENT_TARGET;/g" {} +
-
-          # Update project.yml if exists (for newer Expo projects)
-          if [ -f "ios/simple-ios-todo/project.yml" ]; then
-            sed -i '' "s/minimumOSVersion: .*/minimumOSVersion: $IOS_DEPLOYMENT_TARGET/" ios/simple-ios-todo/project.yml
-          fi
-
-      - name: Install CocoaPods (iOS)
+      - name: Install CocoaPods
         script: |
           echo "--- Installing Pods ---"
           cd ios
           pod install --repo-update --verbose
           cd ..
-          echo "--- Pods Directory Contents ---"
+          echo "--- Pods directory contents ---"
           ls -la ios/Pods/
 
-      - name: Build iOS Development Version
+      - name: Build Development Version
         script: |
-          echo "--- Building iOS Debug Version ---"
-          cd ios
-          
-          # First try with xcpretty for cleaner output
+          echo "--- Building Development Version ---"
           set -o pipefail && xcodebuild \
-            -workspace simple-ios-todo.xcworkspace \
+            -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
@@ -122,42 +87,24 @@ workflows:
             COMPILER_INDEX_STORE_ENABLE=NO \
             | xcpretty
 
-          # Fallback with detailed logs if the first attempt fails
-          if [ $? -ne 0 ]; then
-            echo "--- Retrying with full logs ---"
-            xcodebuild \
-              -workspace simple-ios-todo.xcworkspace \
-              -scheme "$XCODE_SCHEME" \
-              -configuration Debug \
-              -destination 'generic/platform=iOS' \
-              CODE_SIGNING_ALLOWED=NO \
-              | tee ../ios_build.log
-          fi
+          # Alternative approach if the above fails
+          echo "--- Fallback: Detailed build logs ---"
+          xcodebuild \
+            -workspace "$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild.log
 
-          cd ..
+          # Save the full build logs as artifact
           mkdir -p build_logs
-          mv ios_build.log build_logs/ || true
-
-      - name: Build Android Development Version
-        script: |
-          echo "--- Building Android Debug APK ---"
-          cd android
-          ./gradlew assembleDebug --info --stacktrace
-          cd ..
-          echo "--- APK Location ---"
-          find android/app/build/outputs/apk -name "*.apk" | xargs ls -la
-
-          mkdir -p artifacts
-          find android/app/build/outputs/apk -name "*.apk" -exec cp {} artifacts/ \;
+          mv xcodebuild.log build_logs/
 
     artifacts:
-      - build_logs/ios_build.log
-      - artifacts/*.apk
+      - build_logs/xcodebuild.log
       - ios/build/**/*.log
-      - android/app/build/**/*.log
-      - ios/Podfile
-      - ios/Podfile.lock
-      - ios/simple-ios-todo/project.pbxproj
+      - ios
 
     publishing:
       email:
