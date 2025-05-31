@@ -5,11 +5,8 @@ workflows:
     working_directory: .
     environment:
       vars:
-        # Will be set dynamically after prebuild
         BUNDLE_ID: "com.anonymous.simpleiostodo"
         BUILD_NUMBER: "1"
-        
-        # Android specific vars
         ANDROID_PROJECT_DIR: "android"
         ANDROID_BUILD_TYPE: "Debug"
       node: 20
@@ -68,33 +65,16 @@ workflows:
       - name: Expo Prebuild
         script: |
           echo "--- Generating Native Code ---"
-          npx expo prebuild --platform all --non-interactive
+          npx expo prebuild --platform all --non-interactive --clean
           echo "--- Prebuild contents verification ---"
           ls -la ios/
-          ls -la android/
           
-          echo "--- Finding iOS workspace and scheme ---"
-          # Find the actual workspace file
-          WORKSPACE_FILE=$(find ios -name "*.xcworkspace" -type d | head -1)
-          if [ -z "$WORKSPACE_FILE" ]; then
-            echo "Error: No .xcworkspace file found"
-            exit 1
-          fi
+          # Set default workspace and scheme names
+          echo "export XCODE_WORKSPACE=\"ios/simpleiostodo.xcworkspace\"" >> $CM_ENV
+          echo "export XCODE_SCHEME=\"simpleiostodo\"" >> $CM_ENV
           
-          # Extract workspace name
-          WORKSPACE_NAME=$(basename "$WORKSPACE_FILE")
-          echo "Found workspace: $WORKSPACE_NAME"
-          
-          # Find the scheme name from the xcworkspace
-          SCHEME_NAME=$(ls ios/*.xcodeproj 2>/dev/null | head -1 | xargs basename -s .xcodeproj || echo "simpleiostodo")
-          echo "Using scheme: $SCHEME_NAME"
-          
-          # Export for use in subsequent steps
-          echo "export XCODE_WORKSPACE=\"$WORKSPACE_FILE\"" >> $CM_ENV
-          echo "export XCODE_SCHEME=\"$SCHEME_NAME\"" >> $CM_ENV
-          
-          echo "Workspace path: $WORKSPACE_FILE"
-          echo "Scheme name: $SCHEME_NAME"
+          echo "Using workspace: ios/simpleiostodo.xcworkspace"
+          echo "Using scheme: simpleiostodo"
 
       - name: Install CocoaPods (iOS)
         script: |
@@ -104,21 +84,20 @@ workflows:
           cd ..
           echo "--- Pods directory contents ---"
           ls -la ios/Pods/
-          
-          echo "--- Verifying workspace after pod install ---"
-          echo "Using workspace: $XCODE_WORKSPACE"
-          echo "Using scheme: $XCODE_SCHEME"
 
       - name: Build iOS Debug Version
         script: |
           echo "--- Building iOS Debug Version ---"
-          echo "Workspace: $XCODE_WORKSPACE"
-          echo "Scheme: $XCODE_SCHEME"
+          echo "Using workspace: $XCODE_WORKSPACE"
+          echo "Using scheme: $XCODE_SCHEME"
           
-          # Verify the workspace exists
+          # Verify workspace exists
           if [ ! -d "$XCODE_WORKSPACE" ]; then
-            echo "Error: Workspace $XCODE_WORKSPACE does not exist"
-            echo "Available files in ios directory:"
+            echo "Error: Workspace not found at $XCODE_WORKSPACE"
+            echo "Current directory contents:"
+            pwd
+            ls -la
+            echo "iOS directory contents:"
             ls -la ios/
             exit 1
           fi
@@ -126,21 +105,25 @@ workflows:
           # Create build logs directory
           mkdir -p build_logs/ios
           
-          # Build with proper error handling
+          # Run the build
           set -o pipefail && xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
-            -quiet \
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
             | tee build_logs/ios/xcodebuild.log | xcpretty
+          
+          # Capture build result
+          BUILD_RESULT=$?
           
           # Save result bundle if it exists
           if ls /var/folders/*/T/ResultBundle_* 1> /dev/null 2>&1; then
             mv /var/folders/*/T/ResultBundle_* build_logs/ios/ || true
           fi
+          
+          exit $BUILD_RESULT
 
       - name: Build Android Debug Version
         script: |
