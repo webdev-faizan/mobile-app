@@ -8,31 +8,79 @@ workflows:
       vars:
         DOTNET_PATH: $CM_BUILD_DIR/dotnet
         DOTNET: $CM_BUILD_DIR/dotnet/dotnet
-        PATH: $CM_BUILD_DIR/dotnet:$PATH  # Add dotnet to PATH
+        PATH: $CM_BUILD_DIR/dotnet:$PATH
 
     scripts:
+      # Initial setup
+      - name: Show environment info
+        script: |
+          echo "Build directory: $CM_BUILD_DIR"
+          echo "Working directory: $(pwd)"
+          ls -la
+
+      # .NET SDK installation
       - name: Install .NET SDK
-        script: | 
+        script: |
           wget https://dot.net/v1/dotnet-install.sh
           chmod +x dotnet-install.sh
           ./dotnet-install.sh --channel 7.0 --install-dir $DOTNET_PATH
+          $DOTNET --version
 
-      - name: Add nuget source
-        script: |
-          $DOTNET nuget add source https://www.myget.org/F/caliburn-micro-builds/api/v3/index.json --name CaliburnNuGet.org          
-
-      - name: Install MAUI
+      # NuGet configuration
+      - name: Configure NuGet
         script: |
           $DOTNET nuget locals all --clear
+          $DOTNET nuget add source https://www.myget.org/F/caliburn-micro-builds/api/v3/index.json --name CaliburnNuGet.org
+          $DOTNET nuget list source
+
+      # MAUI workload installation
+      - name: Install MAUI workloads
+        script: |
           $DOTNET workload restore
-          $DOTNET workload install maui-android maui-ios \
+          $DOTNET workload install maui \
             --source "https://aka.ms/dotnet7/nuget/index.json" \
             --source "https://api.nuget.org/v3/index.json"
+          $DOTNET workload list
 
-      - name: Build the app for iOS Simulator
+      # Project discovery and build
+      - name: Find and build project
         script: |
-          cd MauiNet7
-          $DOTNET build -f net7.0-ios -c Debug -o ../artifacts          
+          # Create artifacts directory
+          mkdir -p artifacts
+          
+          # Try to find solution or project file
+          if [ -f "*.sln" ]; then
+            solution=$(ls *.sln | head -1)
+            echo "Building solution: $solution"
+            $DOTNET build "$solution" -f net7.0-ios -c Debug -o ./artifacts
+          elif [ -f "*.csproj" ]; then
+            project=$(ls *.csproj | head -1)
+            echo "Building project: $project"
+            $DOTNET build "$project" -f net7.0-ios -c Debug -o ./artifacts
+          else
+            echo "ERROR: No .sln or .csproj file found!"
+            echo "Current directory contents:"
+            ls -la
+            exit 1
+          fi
+
+          # Verify build output
+          echo "Build artifacts:"
+          ls -la artifacts/
 
     artifacts:
-    - ./artifacts/*.app
+      - ./artifacts/**/*.app
+      - ./artifacts/**/*.dll
+      - ./artifacts/**/*.pdb
+
+    publishing:
+      scripts:
+        - name: Verify app bundle
+          script: |
+            if [ -d "artifacts/*.app" ]; then
+              echo "iOS app bundle found:"
+              find artifacts -name "*.app" -type d
+            else
+              echo "ERROR: No .app bundle found in artifacts!"
+              exit 1
+            fi
