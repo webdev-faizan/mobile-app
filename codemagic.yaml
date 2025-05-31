@@ -61,6 +61,13 @@ workflows:
           ls -la ios/
           ls -la android/
 
+      - name: Install CocoaPods
+        script: |
+          echo "--- Installing CocoaPods ---"
+          cd ios
+          pod install
+          cd ..
+
       - name: Build iOS (Direct)
         script: |
           echo "--- Building iOS Project Directly ---"
