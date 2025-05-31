@@ -74,9 +74,18 @@ workflows:
 
       - name: Update iOS Deployment Target
         script: |
+          echo "--- Checking for Podfile ---"
+          if [ ! -f "ios/Podfile" ]; then
+            echo "Error: ios/Podfile not found after prebuild!"
+            echo "Directory contents:"
+            ls -la ios/
+            exit 1
+          fi
+          
           echo "--- Updating iOS Deployment Target ---"
           sed -i '' "s/platform :ios, .*/platform :ios, '13.0'/" ios/Podfile
-          cat ios/Podfile | grep "platform :ios"
+          echo "--- Updated Podfile content ---"
+          grep "platform :ios" ios/Podfile
 
       - name: Install CocoaPods (iOS)
         script: |
@@ -136,6 +145,8 @@ workflows:
       - artifacts/*.apk
       - ios/build/**/*.log
       - android/app/build/**/*.log
+      - ios/Podfile   # Added for debugging
+      - ios/Podfile.lock # Added for debugging
 
     publishing:
       email:
