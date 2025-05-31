@@ -17,7 +17,6 @@ workflows:
       xcode: 15.0  # Required for iOS
       cocoapods: default  # Required for iOS
       java: 17  # Required for Android
-      android: 34  # Required for Android
 
     cache:
       cache_paths:
@@ -26,11 +25,11 @@ workflows:
         - .yarn/cache
         - .yarn/install-state.gz
         - .yarn/unplugged
-        
+
         # iOS-specific caches
         - ~/Library/Caches/CocoaPods
         - ios/Pods
-        
+
         # Android-specific caches
         - ~/.gradle/caches
         - android/.gradle
