@@ -75,9 +75,11 @@ workflows:
           npx expo prebuild --platform ios
           
           echo "--- Verifying prebuild files ---"
-          [ -d "ios/simple-ios-todo.xcworkspace" ] || (echo "Workspace not found" && exit 1)
-          [ -f "ios/Podfile" ] || (echo "Podfile not found" && exit 1)
+          # Check for the Xcode project file (created by expo prebuild)
           [ -f "ios/simple-ios-todo.xcodeproj/project.pbxproj" ] || (echo "Xcode project not found" && exit 1)
+          [ -f "ios/Podfile" ] || (echo "Podfile not found" && exit 1)
+          
+          echo "--- Prebuild verification completed successfully ---"
 
       - name: Install CocoaPods
         script: |
@@ -85,7 +87,12 @@ workflows:
           cd ios
           pod install --repo-update --verbose
           cd ..
+          
+          # Verify that both the workspace and Pods directory were created
           [ -d "ios/Pods" ] || (echo "Pods directory not created" && exit 1)
+          [ -d "ios/simple-ios-todo.xcworkspace" ] || (echo "Workspace not found after pod install" && exit 1)
+          
+          echo "--- CocoaPods installation completed successfully ---"
 
       - name: Build iOS Simulator
         script: |
@@ -95,11 +102,13 @@ workflows:
           # Clear xcodebuild cache
           rm -rf ~/Library/Developer/Xcode/DerivedData/*
           
+          # Clean first
           xcodebuild clean \
             -workspace "ios/simple-ios-todo.xcworkspace" \
             -scheme "simple-ios-todo" \
             -configuration Debug
 
+          # Build for simulator
           xcodebuild \
             -workspace "ios/simple-ios-todo.xcworkspace" \
             -scheme "simple-ios-todo" \
@@ -110,25 +119,45 @@ workflows:
             COMPILER_INDEX_STORE_ENABLE=NO \
             | tee xcodebuild.log
 
-          echo "--- Xcodebuild exit code: $? ---"
-          grep "BUILD SUCCEEDED" xcodebuild.log || (echo "Build failed" && exit 1)
+          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+          echo "--- Xcodebuild exit code: $BUILD_EXIT_CODE ---"
+          
+          # Check if build succeeded
+          if [ $BUILD_EXIT_CODE -eq 0 ] && grep -q "BUILD SUCCEEDED" xcodebuild.log; then
+            echo "--- Build completed successfully ---"
+          else
+            echo "--- Build failed ---"
+            echo "--- Last 50 lines of build log ---"
+            tail -50 xcodebuild.log
+            exit 1
+          fi
 
       - name: Package Artifacts
         script: |
           echo "--- Packaging build artifacts ---"
           mkdir -p ios_simulator_build
           
-          APP_PATH=$(find ios/build/Build/Products/Debug-iphonesimulator -name "*.app" -print -quit)
+          # Find the .app bundle
+          APP_PATH=$(find ios/build/Build/Products/Debug-iphonesimulator -name "*.app" -type d -print -quit)
           
           if [ -d "$APP_PATH" ]; then
+            echo "Found app bundle at: $APP_PATH"
             cp -R "$APP_PATH" ios_simulator_build/
+            
+            # Create tar archive
             tar -czf ios-simulator-build.tar.gz -C ios_simulator_build .
+            
             echo "--- Artifact sizes ---"
             du -sh ios_simulator_build/*.app
             du -sh ios-simulator-build.tar.gz
+            
+            echo "--- Packaging completed successfully ---"
           else
             echo "Error: .app bundle not found"
-            find ios/build -type d -name "*.app" -print
+            echo "--- Contents of build directory ---"
+            find ios/build -name "*.app" -type d -print
+            echo "--- All files in Debug-iphonesimulator ---"
+            find ios/build/Build/Products/Debug-iphonesimulator -ls 2>/dev/null || echo "Debug-iphonesimulator directory not found"
             exit 1
           fi
 
@@ -136,7 +165,14 @@ workflows:
         script: |
           echo "--- Build verification ---"
           [ -f "ios-simulator-build.tar.gz" ] || (echo "Tar archive not found" && exit 1)
-          tar -ztvf ios-simulator-build.tar.gz | grep ".app/" || (echo "App not in archive" && exit 1)
+          
+          # Check archive contents
+          echo "--- Archive contents ---"
+          tar -ztvf ios-simulator-build.tar.gz | head -20
+          
+          # Verify .app is in archive
+          tar -ztvf ios-simulator-build.tar.gz | grep -q "\.app/" || (echo "App not in archive" && exit 1)
+          
           echo "--- Build verified successfully ---"
 
     artifacts:
