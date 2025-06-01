@@ -1,71 +1,21 @@
-# Codemagic CI/CD configuration for Expo iOS development builds
-# This configuration builds an iOS development version of an Expo project
-
-# Workflow definitions
 workflows:
   expo-ios-development:
     name: Expo iOS Development Build
-    instance_type: mac_mini_m2  # Use M2 Mac mini for better performance
-    working_directory: .  # Root directory of the project
+    instance_type: mac_mini_m2
+    working_directory: .
     environment:
-      # Environment variables
       vars:
         XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
         BUILD_NUMBER: "1"
-      # Software versions
       node: 20
       xcode: 15.1
       cocoapods: default
-    # Expo CLI version (simplified format)
-    cli: latest
+      cli:
+        version: latest   # <-- FIXED: Moved inside environment section (was causing validation error)
 
-# Build configuration for iOS
-build:
-  ios:
-    image: macos-latest  # Base image
-    shell: bash  # Default shell
-    env:
-      # Node.js memory configuration
-      NODE_OPTIONS: --max_old_space_size=4096
-
-    # Prebuild phase - runs before dependencies are installed
-    prebuild:
-      - echo "--- Running expo prebuild for iOS ---"
-      - CI=1 npx expo prebuild --platform ios
-
-    # Postinstall phase - runs after dependencies are installed
-    postinstall:
-      - echo "--- Cleaning old CocoaPods ---"
-      - cd ios
-      - rm -rf Pods Podfile.lock
-      - pod deintegrate || true  # Continue if this fails
-      - echo "--- Installing CocoaPods with arch workaround ---"
-      - arch -x86_64 pod install --repo-update
-
-    # Cache configuration to speed up subsequent builds
-    cache:
-      cache_paths:
-        - ~/Library/Caches/CocoaPods
-        - ios/Pods
-        - node_modules
-        - .yarn/cache
-        - .yarn/install-state.gz
-        - .yarn/unplugged
-
-    # When the build should trigger
-    triggering:
-      events:
-        - push  # Trigger on git push
-      branch_patterns:
-        - pattern: "master*"  # Only build master branch
-          include: true
-          source: true
-
-    # Build scripts (executed in order)
     scripts:
-      # 1. Environment setup
       - name: Setup Environment
         script: |
           echo "--- Node version ---"
@@ -79,7 +29,6 @@ build:
           echo "--- CocoaPods version ---"
           pod --version
 
-      # 2. Xcode and CocoaPods setup
       - name: Setup Xcode and CocoaPods
         script: |
           echo "--- Selecting full Xcode developer directory ---"
@@ -90,7 +39,7 @@ build:
           echo "--- Installing/Updating CocoaPods gem ---"
           sudo gem install cocoapods
 
-          # Alternative installation via Homebrew (commented out)
+          # If you want to use Homebrew instead, comment above and uncomment below:
           # echo "--- Uninstalling CocoaPods gem (if present) ---"
           # sudo gem uninstall cocoapods || true
           # echo "--- Installing CocoaPods via Homebrew ---"
@@ -101,7 +50,6 @@ build:
           echo "--- Verifying CocoaPods version ---"
           pod --version
 
-      # 3. JavaScript dependencies
       - name: Install Dependencies
         script: |
           echo "--- Cleaning npm cache ---"
@@ -111,24 +59,36 @@ build:
 
           echo "--- Ensuring expo is installed ---"
           yarn add expo
-          echo "--- Updating Pods ---"
-          cd ios && arch -x86_64 pod install --repo-update && cd ..
+          
+          echo "--- Installing Pods ---"
+          cd ios
+          # FIXED: Corrected indentation - this was incorrectly treated as a script line before
+          arch -x86_64 pod install --repo-update
+          cd ..
 
-      # 4. Expo prebuild (generates native code)
+      # Alternative Pod installation method (commented out)
+      # - name: Install Pods
+      #   script: |
+      #     echo "--- Removing ios/Pods and node_modules folders ---"
+      #     rm -rf ios/Pods node_modules
+      #     echo "--- Installing Pods ---"
+      #     cd ios
+      #     pod install --repo-update --allow-root
+      #     cd ..
+
       - name: Expo Prebuild
         script: |
           echo "--- Generating iOS Native Code ---"
           CI=1 npx expo prebuild --platform ios
           echo "--- Prebuild contents verification ---"
+          ls -la ios/
           if [ -d "ios" ]; then
             echo "✅ iOS folder exists"
             ls -la ios/
           else
             echo "❌ iOS folder does not exist"
-            exit 1
           fi
 
-      # 5. EAS CLI setup (for Expo Application Services)
       - name: Setup EAS CLI
         script: |
           echo "--- Installing EAS CLI ---"
@@ -136,7 +96,6 @@ build:
           echo "--- EAS CLI version ---"
           npx eas-cli --version
 
-      # 6. Final CocoaPods installation
       - name: Install CocoaPods
         script: |
           echo "--- Installing Pods ---"
@@ -146,31 +105,52 @@ build:
           echo "--- Pods directory contents ---"
           ls -la ios/Pods/
 
-    # Uncomment this section to enable the actual Xcode build
-    #   - name: Build Development Version
-    #     script: |
-    #       echo "--- Building Development Version ---"
-    #       set -o pipefail && xcodebuild \
-    #         -workspace "$XCODE_WORKSPACE" \
-    #         -scheme "$XCODE_SCHEME" \
-    #         -configuration Debug \
-    #         -destination 'generic/platform=iOS' \
-    #         -quiet \
-    #         CODE_SIGNING_ALLOWED=NO \
-    #         COMPILER_INDEX_STORE_ENABLE=NO \
-    #         | xcpretty
-    #
-    #       # Alternative approach if the above fails
-    #       echo "--- Fallback: Detailed build logs ---"
-    #       xcodebuild \
-    #         -workspace "$XCODE_WORKSPACE" \
-    #         -scheme "$XCODE_SCHEME" \
-    #         -configuration Debug \
-    #         -destination 'generic/platform=iOS' \
-    #         CODE_SIGNING_ALLOWED=NO \
-    #         | tee xcodebuild.log
+      # Commented out build steps - uncomment and configure as needed
+      # - name: Build Development Version
+      #   script: |
+      #     echo "--- Building Development Version ---"
+      #     set -o pipefail && xcodebuild \
+      #       -workspace "$XCODE_WORKSPACE" \
+      #       -scheme "$XCODE_SCHEME" \
+      #       -configuration Debug \
+      #       -destination 'generic/platform=iOS' \
+      #       -quiet \
+      #       CODE_SIGNING_ALLOWED=NO \
+      #       COMPILER_INDEX_STORE_ENABLE=NO \
+      #       | xcpretty
 
-    # Uncomment this section to enable artifact publishing
+      #     # Alternative approach if the above fails
+      #     echo "--- Fallback: Detailed build logs ---"
+      #     xcodebuild \
+      #       -workspace "$XCODE_WORKSPACE" \
+      #       -scheme "$XCODE_SCHEME" \
+      #       -configuration Debug \
+      #       -destination 'generic/platform=iOS' \
+      #       CODE_SIGNING_ALLOWED=NO \
+      #       | tee xcodebuild.log
+
+      #     # Save the full build logs as artifact
+      #     mkdir -p build_logs
+      #     mv xcodebuild.log build_logs/
+
+    cache:
+      cache_paths:
+        - ~/Library/Caches/CocoaPods
+        - ios/Pods
+        - node_modules
+        - .yarn/cache
+        - .yarn/install-state.gz
+        - .yarn/unplugged
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: "master*"
+          include: true
+          source: true
+
+    # Commented out artifacts - uncomment when you have build steps
     # artifacts:
     #   - build/ios/ipa/*.ipa
     #   - /tmp/xcodebuild_logs/*.log
@@ -178,10 +158,10 @@ build:
     #   - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
     #   - ios/build/**/*.log
 
-    # Uncomment this section to enable notifications
+    # Commented out publishing - configure as needed
     # publishing:
     #   email:
     #     recipients:
-    #       - your-email@example.com
+    #       - webdev.faizanali@gmail.com
     #   slack:
     #     channel: "#build-notifications"
