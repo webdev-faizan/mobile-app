@@ -8,10 +8,16 @@ workflows:
       vars:
         RCT_NO_LAUNCH_PACKAGER: "true"
         RCT_METRO_PORT: "8081"
-        CI: "1"                      # ensures Expo prebuild is non-interactive
+        CI: "1"
         BUILD_NUMBER: "1"
+        # Add your app-specific bundle ID
+        BUNDLE_ID: "com.anonymous.simpleiostodo"
       node: 20
       java: 17
+      # REQUIRED: Add code signing credentials
+      # ios_signing:
+      #   distribution_type: ad_hoc  # or 'ad_hoc' for testing
+      #   bundle_identifier: com.anonymous.simpleiostodo
 
     cache:
       cache_paths:
@@ -21,6 +27,7 @@ workflows:
         - .yarn/unplugged
         - ios/Pods
         - ios/Podfile.lock
+        - ~/Library/Caches/CocoaPods  # Add CocoaPods cache
 
     triggering:
       events:
@@ -31,7 +38,6 @@ workflows:
           source: true
 
     scripts:
-
       # ────────────────────────────────────────────────────────────────
       # 1) Environment Setup
       # ────────────────────────────────────────────────────────────────
@@ -46,116 +52,103 @@ workflows:
           echo "--- CocoaPods $(pod --version) ---"
 
       # ────────────────────────────────────────────────────────────────
-      # 2) Clean Workspace (Pods, DerivedData, etc.)
+      # 2) Install Dependencies First (before prebuild)
       # ────────────────────────────────────────────────────────────────
-      - name: Clean Workspace
+      - name: Install JS Dependencies
         script: |
-          echo "--- Cleaning previous iOS build artifacts ---"
-          cd ios
-          rm -rf Pods Podfile.lock build DerivedData
-          pod deintegrate || true
-          cd ..
+          echo "--- Installing JS dependencies ---"
+          yarn install --frozen-lockfile --network-timeout 600000
 
       # ────────────────────────────────────────────────────────────────
-      # 3) Install JS Dependencies + CocoaPods
+      # 3) Expo Prebuild (generate native projects)
       # ────────────────────────────────────────────────────────────────
-      - name: Install Dependencies
+      - name: Expo Prebuild
         script: |
-          echo "--- Installing JS dependencies (yarn) ---"
-          yarn install --network-timeout 600000 --ignore-engines
-
-          echo "--- Installing CocoaPods dependencies ---"
-          cd ios
-
-          # 3a) clear Boost (and all) from CocoaPods cache to avoid checksum mismatch
-          pod cache clean boost --all || true
-          pod cache clean --all || true
-
-          # 3b) force a fresh repo update, then install
-          pod repo update
-          pod install --repo-update --clean-install
-
-          # 3c) check workspace existence (pod install should have generated .xcworkspace)
-          if [ -d "simpleiostodo.xcworkspace" ]; then
-            echo "✅ CocoaPods workspace created: simpleiostodo.xcworkspace"
-          else
-            echo "❗ WARNING: no .xcworkspace found, proceeding with .xcodeproj"
-          fi
-          cd ..
-
-      # ────────────────────────────────────────────────────────────────
-      # 4) Expo Prebuild → generate iOS/Android native projects
-      # ────────────────────────────────────────────────────────────────
-      - name: Expo Prebuild (iOS)
-        script: |
-          echo "--- Generating iOS native code from Expo config ---"
-          npx expo prebuild --platform ios
-          echo "--- Prebuild finished, listing ios/ folder: ---"
+          echo "--- Running Expo prebuild ---"
+          npx expo prebuild --clean --platform ios
+          echo "--- Prebuild completed, ios/ contents: ---"
           ls -la ios/
 
       # ────────────────────────────────────────────────────────────────
-      # 5) Archive (Release) + Export IPA
+      # 4) Clean and Install CocoaPods
       # ────────────────────────────────────────────────────────────────
-      - name: Archive & Export IPA (App Store-ready)
+      - name: Install CocoaPods Dependencies
         script: |
-          echo "--- Starting Xcode archive for Release build ---"
+          echo "--- Installing CocoaPods dependencies ---"
           cd ios
-
-          if [ -d "simpleiostodo.xcworkspace" ]; then
-            BUILD_TARGET="-workspace simpleiostodo.xcworkspace"
+          
+          # Clear caches to avoid checksum issues
+          rm -rf ~/Library/Caches/CocoaPods
+          pod cache clean --all || true
+          
+          # Fresh install
+          pod install --repo-update --clean-install
+          
+          # Verify workspace creation
+          if [ -f "*.xcworkspace" ]; then
+            echo "✅ Workspace created successfully"
+            WORKSPACE_FILE=$(ls *.xcworkspace | head -n 1)
+            echo "Workspace: $WORKSPACE_FILE"
           else
-            BUILD_TARGET="-project simpleiostodo.xcodeproj"
+            echo "❌ No workspace found"
+            exit 1
           fi
-
-          echo "--- Xcodebuild archive command: xcodebuild $BUILD_TARGET -scheme simpleiostodo ---"
-          set -o pipefail && xcodebuild \
-            $BUILD_TARGET \
-            -scheme simpleiostodo \
-            -configuration Release \
-            -sdk iphoneos \
-            -UseModernBuildSystem=YES \
-            -derivedDataPath build \
-            archive \
-            -archivePath build/simpleiostodo.xcarchive \
-            | tee build/xcode_archive.log
-
-          echo "--- Exporting .xcarchive to .ipa using ExportOptions.plist ---"
-          xcodebuild \
-            -exportArchive \
-            -archivePath build/simpleiostodo.xcarchive \
-            -exportOptionsPlist ../ExportOptions.plist \
-            -exportPath build \
-            | tee build/xcode_export.log
-
-          echo "--- Contents of build/ after export: ---"
-          ls -la build/
           cd ..
 
       # ────────────────────────────────────────────────────────────────
-      # 6) (Optional) Run unit tests or post-build checks
+      # 5) Build and Archive
       # ────────────────────────────────────────────────────────────────
-      # - name: Run iOS Tests
-      #   script: |
-      #     cd ios
-      #     xcodebuild test \
-      #       -workspace simpleiostodo.xcworkspace \
-      #       -scheme simpleiostodo \
-      #       -sdk iphonesimulator \
-      #       -destination 'platform=iOS Simulator,name=iPhone 14' \
-      #       -derivedDataPath build \
-      #       | tee build/xcode_test.log
-      #     cd ..
+      - name: Build and Archive
+        script: |
+          echo "--- Building and archiving iOS app ---"
+          cd ios
+          
+          # Find the correct workspace/project file
+          if ls *.xcworkspace 1> /dev/null 2>&1; then
+            WORKSPACE=$(ls *.xcworkspace | head -n 1)
+            BUILD_TARGET="-workspace $WORKSPACE"
+            echo "Using workspace: $WORKSPACE"
+          else
+            PROJECT=$(ls *.xcodeproj | head -n 1)
+            BUILD_TARGET="-project $PROJECT"
+            echo "Using project: $PROJECT"
+          fi
+          
+          # Get scheme name (usually matches app name)
+          SCHEME_NAME=$(xcodebuild -list $BUILD_TARGET 2>/dev/null | sed -n '/Schemes:/,/^$/p' | grep -v "Schemes:" | head -n 1 | xargs)
+          echo "Using scheme: $SCHEME_NAME"
+          
+          # Archive
+          xcodebuild \
+            $BUILD_TARGET \
+            -scheme "$SCHEME_NAME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath build/App.xcarchive \
+            archive \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM=$CM_APPLE_TEAM_ID
+          
+          # Export IPA
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportPath build \
+            -exportOptionsPlist exportOptions.plist
+          
+          echo "--- Build completed ---"
+          ls -la build/
+          cd ..
 
     artifacts:
       - ios/build/*.ipa
-      - ios/build/Payload
-      - ios/build/xcode_export.log
-      - ios/build/xcode_archive.log
-      - ios/Podfile.lock
+      - ios/build/*.dSYM.zip
+      - ios/build/ExportOptions.plist
 
     publishing:
       email:
         recipients:
           - webdev.faizanali@gmail.com
-      slack:
-        channel: "#build-notifications"
+        notify:
+          success: true
+          failure: true
