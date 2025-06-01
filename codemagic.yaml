@@ -140,7 +140,7 @@ workflows:
     environment:
       vars:
         BUILD_NUMBER: "1"
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
+        XCODE_WORKSPACE: "simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
       node: 20
