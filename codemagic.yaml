@@ -47,16 +47,16 @@ workflows:
           pod --version
 
       - name: Make bash script executable
-    script: |
-      echo "--- Making bash scripts executable ---"
-      chmod +x ./*.bash
-      chmod +x ./build-ios.sh  # Also make your existing build script executable
-      ls -la *.bash  # Verify permissions
+        script: |
+          echo "--- Making bash scripts executable ---"
+          chmod +x ./*.bash
+          chmod +x ./build-ios.sh
+          ls -la *.bash
 
       - name: Run custom bash script
-    script: |
-      echo "--- Running custom bash script ---"
-      ./setup_environment.bash  # Or whatever your bash file is named
+        script: |
+          echo "--- Running custom bash script ---"
+          ./setup_environment.bash
 
       - name: Setup Xcode and CocoaPods
         script: |
