@@ -46,6 +46,17 @@ workflows:
           echo "--- CocoaPods version ---"
           pod --version
 
+      - name: Setup Xcode and CocoaPods
+        script: |
+          echo "--- Selecting full Xcode developer directory ---"
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          echo "--- Verifying xcode-select path ---"
+          xcode-select -p
+          echo "--- Installing CocoaPods gem ---"
+          sudo gem install cocoapods
+          echo "--- Verifying CocoaPods version ---"
+          pod --version
+      
       - name: Make bash script executable
         script: |
           echo "--- Making bash scripts executable ---"
@@ -57,17 +68,6 @@ workflows:
         script: |
           echo "--- Running custom bash script ---"
           ./.bash
-
-      - name: Setup Xcode and CocoaPods
-        script: |
-          echo "--- Selecting full Xcode developer directory ---"
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-          echo "--- Verifying xcode-select path ---"
-          xcode-select -p
-          echo "--- Installing CocoaPods gem ---"
-          sudo gem install cocoapods
-          echo "--- Verifying CocoaPods version ---"
-          pod --version
 
       - name: Clean Workspace
         script: |
