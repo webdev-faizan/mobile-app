@@ -12,11 +12,16 @@ workflows:
       cache_paths:
         - $HOME/Library/Caches/CocoaPods
         - $CM_BUILD_DIR/node_modules
-    scripts:
-      - name: Install dependencies using expo install
+
+    steps:
+      - name: Install Dependencies
         script: |
-          npm install -g expo-cli
-          npx expo install
+          echo "--- Cleaning npm cache ---"
+          npm cache clean --force
+          echo "--- Installing Yarn dependencies ---"
+          yarn install --network-timeout 600000 --ignore-engines
+          echo "--- Ensuring expo is installed ---"
+          yarn add expo
 
       - name: Prebuild clean iOS and Android project
         script: |
