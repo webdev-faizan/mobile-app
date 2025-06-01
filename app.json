@@ -7,10 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "platforms": [
-      "ios",
-      "android"
-    ],
+    "platforms": ["ios", "android"],
     "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash.png",
@@ -34,8 +31,6 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      "expo-build-properties"
-    ]
+    "plugins": ["expo-build-properties"]
   }
 }
