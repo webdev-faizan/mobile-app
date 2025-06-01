@@ -1,56 +1,161 @@
 workflows:
-  react-native-ios-android-unsigned:
-    name: React Native iOS and Android Unsigned Build
-    max_build_duration: 120
-    instance_type: mac_mini_m1
-
+  expo-ios-development:
+    name: Expo iOS Development Build
+    instance_type: mac_mini_m2
+    working_directory: .
     environment:
-      xcode: 15.4
-      java: 17
+      vars:
+        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
+        XCODE_SCHEME: "simple-ios-todo"
+        BUNDLE_ID: "com.anonymous.simpleiostodo"
+        BUILD_NUMBER: "1"
       node: 20
+      xcode: 15.1
+      cocoapods: default
 
     cache:
       cache_paths:
-        - $HOME/Library/Caches/CocoaPods
-        - $CM_BUILD_DIR/node_modules
+        - ~/Library/Caches/CocoaPods
+        - ios/Pods
+        - node_modules
+        - .yarn/cache
+        - .yarn/install-state.gz
+        - .yarn/unplugged
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: "master*"
+          include: true
+          source: true
 
     scripts:
+      - name: Setup Environment
+        script: |
+          echo "--- Node version ---"
+          node -v
+          echo "--- Yarn version ---"
+          yarn -v
+          echo "--- npm version ---"
+          npm -v
+          echo "--- Xcode version ---"
+          xcodebuild -version
+          echo "--- CocoaPods version ---"
+          pod --version
+
+      - name: Setup Xcode and CocoaPods
+        script: |
+          echo "--- Selecting full Xcode developer directory ---"
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          echo "--- Verifying xcode-select path ---"
+          xcode-select -p
+
+          echo "--- Installing/Updating CocoaPods gem ---"
+          sudo gem install cocoapods
+
+          # If you want to use Homebrew instead, comment above and uncomment below:
+          # echo "--- Uninstalling CocoaPods gem (if present) ---"
+          # sudo gem uninstall cocoapods || true
+          # echo "--- Installing CocoaPods via Homebrew ---"
+          # brew install cocoapods
+          # echo "--- Linking CocoaPods binaries (if needed) ---"
+          # brew link --overwrite cocoapods
+
+          echo "--- Verifying CocoaPods version ---"
+          pod --version
+
       - name: Install Dependencies
         script: |
           echo "--- Cleaning npm cache ---"
           npm cache clean --force
           echo "--- Installing Yarn dependencies ---"
           yarn install --network-timeout 600000 --ignore-engines
+
           echo "--- Ensuring expo is installed ---"
           yarn add expo
+          # - arch -x86_64 pod install --repo-update
 
-      - name: Prebuild clean iOS and Android project
+
+
+      # - name: Install Pods
+      #   script: |
+      #     echo "--- Removing ios/Pods and node_modules folders ---"
+      #     rm -rf ios/Pods node_modules
+      #     echo "--- Installing Pods ---"
+      #     cd ios
+      #     pod install --repo-update --allow-root
+      #     cd ..
+
+     
+
+      - name: Expo Prebuild
         script: |
-          rm -rf ios android
-          npx expo prebuild --clean --platform ios,android
+          echo "--- Generating iOS Native Code ---"
+          CI=1 npx expo prebuild --platform ios
+          echo "--- Prebuild contents verification ---"
+          ls -la ios/
+          if [ -d "ios" ]; then
+          echo "✅ iOS folder exists"
+           ls -la ios/
+            else
+             echo "❌ iOS folder does not exist"
+              fi
 
-      - name: Downgrade CocoaPods for compatibility
+
+      - name: Setup EAS CLI
         script: |
-          sudo gem uninstall cocoapods -a -x || true
-          sudo gem install cocoapods -v 1.11.3
+          echo "--- Installing EAS CLI ---"
+          npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
+          echo "--- EAS CLI version ---"
+          npx eas-cli --version      
 
-      - name: Install CocoaPods dependencies
+      - name: Install CocoaPods
         script: |
-          cd ios && pod install
+          echo "--- Installing Pods ---"
+          cd ios
+          pod install --repo-update --verbose
+          cd ..
+          echo "--- Pods directory contents ---"
+          ls -la ios/Pods/
 
-      - name: Build iOS app unsigned (skip signing)
-        script: |
-          xcodebuild -workspace ios/Bluesky.xcworkspace \
-            -scheme Bluesky \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -derivedDataPath build
+    #   - name: Build Development Version
+    #     script: |
+    #       echo "--- Building Development Version ---"
+    #       set -o pipefail && xcodebuild \
+    #         -workspace "$XCODE_WORKSPACE" \
+    #         -scheme "$XCODE_SCHEME" \
+    #         -configuration Debug \
+    #         -destination 'generic/platform=iOS' \
+    #         -quiet \
+    #         CODE_SIGNING_ALLOWED=NO \
+    #         COMPILER_INDEX_STORE_ENABLE=NO \
+    #         | xcpretty
 
-      - name: Build Android app unsigned (debug build)
-        script: |
-          cd android
-          ./gradlew assembleDebug
+    #       # Alternative approach if the above fails
+    #       echo "--- Fallback: Detailed build logs ---"
+    #       xcodebuild \
+    #         -workspace "$XCODE_WORKSPACE" \
+    #         -scheme "$XCODE_SCHEME" \
+    #         -configuration Debug \
+    #         -destination 'generic/platform=iOS' \
+    #         CODE_SIGNING_ALLOWED=NO \
+    #         | tee xcodebuild.log
 
-    artifacts:
-      - build/ios/Build/Products/Debug-iphonesimulator/*.app
-      - android/app/build/outputs/apk/debug/*.apk
+    #       # Save the full build logs as artifact
+    #       mkdir -p build_logs
+    #       mv xcodebuild.log build_logs/
+
+    # artifacts:
+    #   - build/ios/ipa/*.ipa
+    #   - /tmp/xcodebuild_logs/*.log
+    #   - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+    #   - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    #   - ios/build/**/*.log
+
+    # publishing:
+    #   email:
+    #     recipients:
+    #       - webdev.faizanali@gmail.com
+    #   slack:
+    #     channel: "#build-notifications"
