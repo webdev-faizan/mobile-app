@@ -70,16 +70,28 @@ workflows:
         script: |
           echo "--- Building iOS Development Archive ---"
           cd ios
-          xcodebuild -workspace simple-ios-todo.xcodeproj \
-            -scheme simple-ios-todo \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -derivedDataPath build \
-            clean build
+          if ls *.xcworkspace 1> /dev/null 2>&1; then
+            echo "Found .xcworkspace file, building with workspace..."
+            xcodebuild -workspace simple-ios-todo.xcworkspace \
+              -scheme simple-ios-todo \
+              -configuration Debug \
+              -sdk iphonesimulator \
+              -derivedDataPath build \
+              clean build
+          elif ls *.xcodeproj 1> /dev/null 2>&1; then
+            echo "Found .xcodeproj file, building with project..."
+            xcodebuild -project simple-ios-todo.xcodeproj \
+              -scheme simple-ios-todo \
+              -configuration Debug \
+              -sdk iphonesimulator \
+              -derivedDataPath build \
+              clean build
+          else
+            echo "No .xcworkspace or .xcodeproj found in ios directory!"
+            exit 1
+          fi
           cd ..
           echo "--- iOS Build Complete ---"
-
-      # Optional: upload artifacts or export IPA, you can integrate EAS build if preferred.
 
     artifacts:
       - ios/build/**/*.xcarchive
