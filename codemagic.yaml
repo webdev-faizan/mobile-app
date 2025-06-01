@@ -1,64 +1,112 @@
-ios:
-  release:
-    name: iOS release
-    <<: *instance_mac_m2
-    environment:
-      <<: *automatic_ios_signing
-      <<: *env_versions
-      vars:
-        BUNDLE_ID: "com.anonymous.simpleiostodo"
-        XCODE_WORKSPACE: "App.xcworkspace"
-        XCODE_SCHEME: "App"
-        XCODE_CONFIG: "Release"
-    triggering:
-      events:
-        - tag
-      branch_patterns:
-        - pattern: "main"
-          include: true
-          source: true
-    scripts:
-      - *ios_initialize_keychain
-      - *fetch_signing_files
-      - *add_certs_to_keychain
-      - *use_profiles
-      - *increment_ios_build_number
-      - *build_ipa
-    artifacts:
-      - *ipa
-      - *dsym
-    publishing:
-      <<: *email_release
-      <<: *ios_app_store_publish
+defaults:
+  instance_mac_m2: &instance_mac_m2
+    instance_type: mac_m2
 
-  staging:
-    name: iOS develop
-    <<: *instance_mac_m2
-    environment:
-      <<: *automatic_ios_signing
-      <<: *env_versions
-      vars:
-        BUNDLE_ID: "com.anonymous.simpleiostodo"
-        XCODE_WORKSPACE: "App.xcworkspace"
-        XCODE_SCHEME: "App"
-        XCODE_CONFIG: "Debug"
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: "develop"
-          include: true
-          source: true
-    scripts:
-      - *ios_initialize_keychain
-      - *fetch_signing_files
-      - *add_certs_to_keychain
-      - *use_profiles
-      - *increment_ios_build_number
-      - *build_ipa
-    artifacts:
-      - *ipa
-      - *xcode_log
-    publishing:
-      <<: *email_develop
-      <<: *slack_publish
+  env_versions: &env_versions
+    ruby: 3.1.2
+    node: 18.16.0
+
+  email_notify: &email_notify
+    email:
+      recipients:
+        - wedev.faizanali@gmail.com
+
+  ipa_artifact: &ipa_artifact
+    paths:
+      - build/App.ipa
+
+  dsym_artifact: &dsym_artifact
+    paths:
+      - build/App.app.dSYM.zip
+
+  xcode_log_artifact: &xcode_log_artifact
+    paths:
+      - build/xcodebuild.log
+
+workflows:
+  ios:
+    release:
+      name: iOS Release (No Signing)
+      <<: *instance_mac_m2
+      environment:
+        <<: *env_versions
+        vars:
+          BUNDLE_ID: "com.anonymous.simpleiostodo"
+          XCODE_WORKSPACE: "App.xcworkspace"
+          XCODE_SCHEME: "App"
+          XCODE_CONFIG: "Release"
+      triggering:
+        events:
+          - tag
+        branch_patterns:
+          - pattern: "main"
+            include: true
+            source: true
+      scripts:
+        - name: Increment build number
+          script: |
+            agvtool next-version -all
+        - name: Build IPA without signing
+          script: |
+            set -e
+            xcodebuild -workspace "$XCODE_WORKSPACE" \
+              -scheme "$XCODE_SCHEME" \
+              -configuration "$XCODE_CONFIG" \
+              -sdk iphoneos \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGN_IDENTITY="" \
+              PROVISIONING_PROFILE_SPECIFIER="" \
+              -archivePath build/App.xcarchive archive
+
+            xcodebuild -exportArchive \
+              -archivePath build/App.xcarchive \
+              -exportPath build \
+              -exportOptionsPlist ExportOptions.plist
+      artifacts:
+        - *ipa_artifact
+        - *dsym_artifact
+      publishing:
+        <<: *email_notify
+
+    staging:
+      name: iOS Staging (No Signing)
+      <<: *instance_mac_m2
+      environment:
+        <<: *env_versions
+        vars:
+          BUNDLE_ID: "com.anonymous.simpleiostodo"
+          XCODE_WORKSPACE: "App.xcworkspace"
+          XCODE_SCHEME: "App"
+          XCODE_CONFIG: "Debug"
+      triggering:
+        events:
+          - push
+        branch_patterns:
+          - pattern: "develop"
+            include: true
+            source: true
+      scripts:
+        - name: Increment build number
+          script: |
+            agvtool next-version -all
+        - name: Build IPA without signing
+          script: |
+            set -e
+            xcodebuild -workspace "$XCODE_WORKSPACE" \
+              -scheme "$XCODE_SCHEME" \
+              -configuration "$XCODE_CONFIG" \
+              -sdk iphoneos \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGN_IDENTITY="" \
+              PROVISIONING_PROFILE_SPECIFIER="" \
+              -archivePath build/App.xcarchive archive
+
+            xcodebuild -exportArchive \
+              -archivePath build/App.xcarchive \
+              -exportPath build \
+              -exportOptionsPlist ExportOptions.plist
+      artifacts:
+        - *ipa_artifact
+        - *xcode_log_artifact
+      publishing:
+        <<: *email_notify
