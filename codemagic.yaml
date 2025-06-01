@@ -23,10 +23,7 @@ workflows:
         script: |
           npx expo login -u $EXPO_USERNAME -p $EXPO_PASSWORD
 
-      - name: Install CocoaPods dependencies (iOS)
-        script: |
-          cd $IOS_BUILD_DIR
-          pod install
+      # Removed CocoaPods install step because ios folder / Podfile not found
 
       - name: Build Android APK (unsigned)
         script: |
