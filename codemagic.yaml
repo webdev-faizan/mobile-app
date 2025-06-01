@@ -56,7 +56,7 @@ workflows:
       - name: Run custom bash script
         script: |
           echo "--- Running custom bash script ---"
-          ./setup_environment.bash
+          ./.bash
 
       - name: Setup Xcode and CocoaPods
         script: |
