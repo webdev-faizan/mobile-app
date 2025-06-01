@@ -1,131 +1,93 @@
-version: 1.0
 workflows:
-  expo-ios-build:
-    name: Expo iOS Build
+  expo-ios-development:
+    name: Expo iOS Development Build
     instance_type: mac_mini_m2
     working_directory: .
-    
     environment:
+      vars:
+        BUILD_NUMBER: "1"
       node: 20
-      xcode: 15.0
-      cocoapods: default
-    
+      # java not required for iOS builds, but can keep if needed
+      java: 17
+
     cache:
       cache_paths:
         - node_modules
-        - .expo
-        - ios/Pods
-    
+        - .yarn/cache
+        - .yarn/install-state.gz
+        - .yarn/unplugged
+
     triggering:
       events:
         - push
       branch_patterns:
-        - pattern: "main"
+        - pattern: "master*"
           include: true
           source: true
-    
+
     scripts:
+      - name: Setup Environment
+        script: |
+          echo "--- Node version ---"
+          node -v
+          echo "--- Yarn version ---"
+          yarn -v
+          echo "--- npm version ---"
+          npm -v
+          echo "--- Xcode version ---"
+          xcodebuild -version
+          echo "--- Ruby version ---"
+          ruby -v
+          echo "--- CocoaPods version ---"
+          pod --version
+
       - name: Install Dependencies
         script: |
-          echo "--- Installing dependencies ---"
-          npm install -g yarn@latest
-          yarn install --frozen-lockfile
-          npm install -g @expo/cli@latest
-      
-      - name: Expo Prebuild
-        script: |
-          echo "--- Running expo prebuild ---"
-          npx expo prebuild --platform ios --clean
-          
-          # Verify prebuild output
-          if [ ! -d "ios" ]; then
-            echo "❌ iOS folder not created by prebuild"
-            exit 1
-          fi
-      
-      - name: Install CocoaPods
-        script: |
-          echo "--- Installing pods ---"
+          echo "--- Cleaning npm cache ---"
+          npm cache clean --force
+          echo "--- Installing Yarn dependencies ---"
+          yarn install --network-timeout 600000 --ignore-engines
+          echo "--- Installing CocoaPods dependencies ---"
           cd ios
           pod install --repo-update
           cd ..
-      
-      - name: Build for Simulator
+
+      - name: Setup EAS CLI
         script: |
-          echo "--- Building for iOS Simulator ---"
-          xcodebuild build \
-            -workspace ios/YourApp.xcworkspace \
-            -scheme YourApp \
+          echo "--- Installing EAS CLI ---"
+          npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
+          echo "--- EAS CLI version ---"
+          npx eas-cli --version
+
+      - name: Expo Prebuild for iOS
+        script: |
+          echo "--- Generating iOS Native Code ---"
+          npx expo prebuild --platform ios --non-interactive
+          echo "--- Prebuild contents verification ---"
+          ls -la ios/
+
+      - name: Build iOS Development Archive
+        script: |
+          echo "--- Building iOS Development Archive ---"
+          cd ios
+          xcodebuild -workspace YourProjectName.xcworkspace \
+            -scheme YourProjectName \
             -configuration Debug \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.0' \
-            CODE_SIGNING_ALLOWED=NO \
-            | tee xcodebuild.log
-          
-          if [ ${PIPESTATUS[0]} -ne 0 ]; then
-            echo "❌ Simulator build failed"
-            exit 1
-          fi
-      
-      - name: Build for Device
-        script: |
-          echo "--- Building for iOS Device ---"
-          cat > ios/ExportOptions.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>method</key>
-    <string>development</string>
-    <key>teamID</key>
-    <string></string>
-    <key>compileBitcode</key>
-    <false/>
-    <key>uploadBitcode</key>
-    <false/>
-    <key>uploadSymbols</key>
-    <false/>
-</dict>
-</plist>
-EOF
-          
-          xcodebuild archive \
-            -workspace ios/YourApp.xcworkspace \
-            -scheme YourApp \
-            -configuration Release \
-            -archivePath build/YourApp.xcarchive \
-            CODE_SIGNING_ALLOWED=NO
-          
-          xcodebuild -exportArchive \
-            -archivePath build/YourApp.xcarchive \
-            -exportOptionsPlist ios/ExportOptions.plist \
-            -exportPath build
-      
-      - name: Package Artifacts
-        script: |
-          echo "--- Packaging artifacts ---"
-          mkdir -p artifacts
-          
-          # Find simulator app
-          SIMAPP=$(find ios/build -name "*.app" -type d | head -1)
-          if [ -n "$SIMAPP" ]; then
-            tar -czf artifacts/simulator-build.tar.gz -C $(dirname $SIMAPP) $(basename $SIMAPP)
-          fi
-          
-          # Package IPA if exists
-          if [ -f "build/YourApp.ipa" ]; then
-            cp build/YourApp.ipa artifacts/
-          fi
-          
-          # Package logs
-          cp xcodebuild.log artifacts/
-    
+            -derivedDataPath build \
+            clean build
+          cd ..
+          echo "--- iOS Build Complete ---"
+
+      # Optional: upload artifacts or export IPA, you can integrate EAS build if preferred.
+
     artifacts:
-      - artifacts/*
-    
+      - ios/build/**/*.xcarchive
+      - ios/build/**/*.log
+
     publishing:
       email:
-        on_success: always
-        on_failure: always
         recipients:
-          - your-email@example.com
+          - webdev.faizanali@gmail.com
+      slack:
+        channel: "#build-notifications"
