@@ -5,10 +5,11 @@ workflows:
     working_directory: .
     environment:
       vars:
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
-        XCODE_SCHEME: "simple-ios-todo"
+        XCODE_PROJECT: "ios/simpleiostodo.xcodeproj"  # Changed from workspace to project
+        XCODE_SCHEME: "simpleiostodo"  # Corrected scheme name
         BUNDLE_ID: "com.anonymous.simpleiostodo"
         BUILD_NUMBER: "1"
+        IOS_DEPLOYMENT_TARGET: "13.0"  # Added deployment target
       node: 20
       xcode: 15.0
       cocoapods: default
@@ -62,6 +63,10 @@ workflows:
         script: |
           echo "--- Generating iOS Native Code ---"
           npx expo prebuild --platform ios --non-interactive
+          
+          # Update iOS deployment target in Podfile
+          sed -i '' "s/platform :ios, .*/platform :ios, '$IOS_DEPLOYMENT_TARGET'/" ios/Podfile
+          
           echo "--- Prebuild contents verification ---"
           ls -la ios/
 
@@ -69,6 +74,10 @@ workflows:
         script: |
           echo "--- Installing Pods ---"
           cd ios
+          # Clean pod cache and update repos
+          pod cache clean --all
+          pod repo update
+          # Install pods with deployment target override
           pod install --repo-update --verbose
           cd ..
           echo "--- Pods directory contents ---"
@@ -77,8 +86,10 @@ workflows:
       - name: Build Development Version
         script: |
           echo "--- Building Development Version ---"
+          
+          # First try with xcodeproj instead of workspace
           set -o pipefail && xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
+            -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
@@ -87,10 +98,23 @@ workflows:
             COMPILER_INDEX_STORE_ENABLE=NO \
             | xcpretty
 
-          # Alternative approach if the above fails
+          # If that fails, try with workspace if it exists
+          if [[ $? -ne 0 && -d "ios/simpleiostodo.xcworkspace" ]]; then
+            set -o pipefail && xcodebuild \
+              -workspace "ios/simpleiostodo.xcworkspace" \
+              -scheme "$XCODE_SCHEME" \
+              -configuration Debug \
+              -destination 'generic/platform=iOS' \
+              -quiet \
+              CODE_SIGNING_ALLOWED=NO \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              | xcpretty
+          fi
+
+          # Save detailed logs as fallback
           echo "--- Fallback: Detailed build logs ---"
           xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
+            -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
