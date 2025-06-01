@@ -54,7 +54,7 @@ workflows:
         script: |
           npm cache clean --force
           yarn install --network-timeout 600000 --ignore-engines
-        
+
       - name: Setup Expo CLI
         script: |
           npm install -g @expo/cli@latest --no-audit --fund=false --omit=optional
@@ -75,7 +75,7 @@ workflows:
           cd ios
           pod install --repo-update --verbose
           cd ..
-
+          
           # Build for iOS Simulator
           xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
@@ -85,7 +85,7 @@ workflows:
             -derivedDataPath ios/build \
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO
-
+          
           # Create simulator app bundle
           mkdir -p ios_simulator_build
           if [ -d "ios/build/Build/Products/Debug-iphonesimulator" ]; then
@@ -112,16 +112,11 @@ workflows:
       # Local build artifacts
       - android/app/build/outputs/**/*.apk
       - android/app/build/**/*.log
-      # - ios_simulator_build/*.app
-      # - ios-simulator-build.tar.gz
+      - ios_simulator_build/*.app
+      - ios-simulator-build.tar.gz
       # Build logs
-      # - ios/build/**/*.log
-      # - build_logs/**
-      - build/ios/ipa/*.ipa
-      - android/app/build/outputs/**/*.aab
-      - /tmp/xcodebuild_logs/*.log
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+      - ios/build/**/*.log
+      - build_logs/**
 
     publishing:
       email:
