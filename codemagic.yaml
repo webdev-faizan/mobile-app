@@ -95,14 +95,22 @@ workflows:
       - name: Install CocoaPods with Retry Logic
         script: |
           cd ios
+          # Ensure Podfile minimum deployment target for RNScreens compatibility
+          if ! grep -q "platform :ios" Podfile; then
+            echo "platform :ios, '13.0'" | cat - Podfile > temp && mv temp Podfile
+          else
+            # Replace if platform ios version is less than 13.0
+            sed -i '' 's/platform :ios, .*/platform :ios, '\''13.0'\''/' Podfile
+          fi
+
           install_pods() {
             local attempt=$1
             case $attempt in
               1) pod install --repo-update --verbose ;;
               2) pod cache clean --all || true; pod install --repo-update --verbose ;;
               3) pod install --verbose ;;
-              4) if ! grep -q "platform :ios" Podfile; then echo "platform :ios, '12.4'" | cat - Podfile > temp && mv temp Podfile; fi; pod install --verbose ;;
-              5) pod deintegrate || true; pod install --repo-update --verbose ;;
+              4) pod deintegrate || true; pod install --repo-update --verbose ;;
+              5) pod install --verbose ;;
             esac
           }
           max_attempts=5
