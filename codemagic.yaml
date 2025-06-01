@@ -1,6 +1,6 @@
 workflows:
   expo-development-build:
-    name: Expo Development Build (iOS + Android)
+    name: Expo Development Build (iOS only)
     instance_type: mac_mini_m2
     working_directory: .
     environment:
@@ -17,8 +17,6 @@ workflows:
         - .yarn/unplugged
         - ~/Library/Caches/CocoaPods
         - ios/Pods
-        - android/.gradle
-        - android/app/build
 
     triggering:
       events:
@@ -40,7 +38,7 @@ workflows:
           echo "CocoaPods version: $(pod --version)"
           echo "System architecture: $(uname -m)"
           echo "Available memory: $(sysctl -n hw.memsize | awk '{print $0/1073741824\" GB\"}')"
-
+          
           export NODE_OPTIONS=--max_old_space_size=4096
           export LANG=en_US.UTF-8
           export LC_ALL=en_US.UTF-8
@@ -50,8 +48,7 @@ workflows:
         script: |
           echo "--- Cleaning previous builds ---"
           rm -rf ios/build ios_simulator_build ios/
-          rm -rf android/app/build android/.gradle
-          rm -f ios-simulator-build.tar.gz android-debug.apk
+          rm -f ios-simulator-build.tar.gz
           find . -name "*.log" -delete
           rm -rf ~/Library/Developer/Xcode/DerivedData/*
 
@@ -73,26 +70,39 @@ workflows:
           echo "--- Running expo prebuild ---"
           npx expo prebuild --platform ios
 
-          echo "--- Verifying prebuild files ---"
-          [ -f "ios/simple-ios-todo.xcodeproj/project.pbxproj" ] || (echo "Xcode project not found" && exit 1)
-          [ -f "ios/Podfile" ] || (echo "Podfile not found" && exit 1)
-          echo "--- Prebuild verification completed successfully ---"
+          echo "--- Checking ios directory ---"
+          if [ ! -d "ios" ]; then
+            echo "Error: ios directory missing"
+            exit 1
+          fi
+
+          echo "--- Listing ios directory contents ---"
+          ls -la ios
 
       - name: Install CocoaPods
         script: |
           echo "--- Installing pods ---"
           cd ios
-          pod install --repo-update --verbose
+
+          if [ ! -f Podfile ]; then
+            echo "Error: Podfile not found"
+            exit 1
+          fi
+
+          pod install --repo-update --verbose || exit 1
+
+          if [ ! -d simple-ios-todo.xcworkspace ]; then
+            echo "Error: Workspace directory not found after pod install"
+            ls -la
+            exit 1
+          fi
+
           cd ..
-          [ -d "ios/Pods" ] || (echo "Pods directory not created" && exit 1)
-          [ -d "ios/simple-ios-todo.xcworkspace" ] || (echo "Workspace not found after pod install" && exit 1)
-          echo "--- CocoaPods installation completed successfully ---"
 
       - name: Build iOS Simulator
         script: |
           echo "--- Building for iOS Simulator ---"
-          set -o pipefail
-          rm -rf ~/Library/Developer/Xcode/DerivedData/*
+          ls -la ios/simple-ios-todo.xcworkspace || (echo "Workspace not found" && exit 1)
 
           xcodebuild clean \
             -workspace "ios/simple-ios-todo.xcworkspace" \
@@ -120,9 +130,9 @@ workflows:
             exit 1
           fi
 
-      - name: Package iOS Simulator Artifacts
+      - name: Package Artifacts
         script: |
-          echo "--- Packaging iOS simulator build artifacts ---"
+          echo "--- Packaging build artifacts ---"
           mkdir -p ios_simulator_build
 
           APP_PATH=$(find ios/build/Build/Products/Debug-iphonesimulator -name "*.app" -type d -print -quit)
@@ -143,35 +153,18 @@ workflows:
             exit 1
           fi
 
-      - name: Verify iOS Build Output
+      - name: Verify Build Output
         script: |
-          echo "--- Verifying iOS build output ---"
+          echo "--- Build verification ---"
           [ -f "ios-simulator-build.tar.gz" ] || (echo "Tar archive not found" && exit 1)
           echo "--- Archive contents ---"
           tar -ztvf ios-simulator-build.tar.gz | head -20
           tar -ztvf ios-simulator-build.tar.gz | grep -q "\.app/" || (echo "App not in archive" && exit 1)
-          echo "--- iOS Build verified successfully ---"
-
-      - name: Build Android APK
-        script: |
-          echo "--- Building Android APK ---"
-          cd android
-          ./gradlew clean assembleDebug
-
-          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" -print -quit)
-          if [ -f "$APK_PATH" ]; then
-            echo "APK built successfully at: $APK_PATH"
-            cp "$APK_PATH" ../android-debug.apk
-          else
-            echo "APK build failed"
-            exit 1
-          fi
-          cd ..
+          echo "--- Build verified successfully ---"
 
     artifacts:
       - ios_simulator_build/*.app
       - ios-simulator-build.tar.gz
-      - android-debug.apk
       - ios/build/**/*.log
       - xcodebuild.log
 
