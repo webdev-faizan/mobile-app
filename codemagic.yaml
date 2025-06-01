@@ -130,10 +130,8 @@ workflows:
               4)
                 echo "Attempting with deployment target fix..."
                 # Add deployment target to Podfile if not present
-                if ! grep -q "platform :ios" ../ios/Podfile; then
-                  sed -i '' '1i\
-platform :ios, '\''12.4'\''
-' ../ios/Podfile
+                if ! grep -q "platform :ios" Podfile; then
+                  echo "platform :ios, '12.4'" | cat - Podfile > temp && mv temp Podfile
                 fi
                 pod install --verbose
                 ;;
