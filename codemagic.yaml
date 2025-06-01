@@ -47,29 +47,29 @@ workflows:
           xcode-select --install || true
           sudo xcodebuild -license accept || true
 
-      - name: Install Ruby 3.1.4 (ARM64 Optimized)
-        script: |
-          echo "--- Installing Ruby 3.1.4 for M1 ---"
-          export CC=/usr/bin/gcc
-          export RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3) --with-opt-dir=$(brew --prefix openssl@3)"
-          export LDFLAGS="-L$(brew --prefix openssl@3)/lib -arch arm64"
-          export CPPFLAGS="-I$(brew --prefix openssl@3)/include"
-          export PKG_CONFIG_PATH="$(brew --prefix openssl@3)/lib/pkgconfig"
-          export RUBY_CFLAGS="-Wno-error=implicit-function-declaration"
-          export archflags="-arch arm64"
+      # - name: Install Ruby 3.1.4 (ARM64 Optimized)
+      #   script: |
+      #     echo "--- Installing Ruby 3.1.4 for M1 ---"
+      #     export CC=/usr/bin/gcc
+      #     export RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3) --with-opt-dir=$(brew --prefix openssl@3)"
+      #     export LDFLAGS="-L$(brew --prefix openssl@3)/lib -arch arm64"
+      #     export CPPFLAGS="-I$(brew --prefix openssl@3)/include"
+      #     export PKG_CONFIG_PATH="$(brew --prefix openssl@3)/lib/pkgconfig"
+      #     export RUBY_CFLAGS="-Wno-error=implicit-function-declaration"
+      #     export archflags="-arch arm64"
 
-          echo "Compiler: $CC"
-          echo "Configure opts: $RUBY_CONFIGURE_OPTS"
-          echo "LDFLAGS: $LDFLAGS"
+      #     echo "Compiler: $CC"
+      #     echo "Configure opts: $RUBY_CONFIGURE_OPTS"
+      #     echo "LDFLAGS: $LDFLAGS"
           
-          rbenv install 3.1.4 -v || {
-            echo "--- Fallback attempt with different settings ---"
-            export RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3) --disable-install-doc"
-            rbenv install 3.1.4 -v
-          }
+      #     rbenv install 3.1.4 -v || {
+      #       echo "--- Fallback attempt with different settings ---"
+      #       export RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3) --disable-install-doc"
+      #       rbenv install 3.1.4 -v
+      #     }
           
-          rbenv global 3.1.4
-          ruby -v
+      #     rbenv global 3.1.4
+      #     ruby -v
 
       - name: Verify Ruby Installation
         script: |
