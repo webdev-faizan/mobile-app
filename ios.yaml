@@ -102,8 +102,10 @@ workflows:
           mv xcodebuild.log build_logs/
 
     artifacts:
-      - build_logs/xcodebuild.log
-      - ios/build/**/*.log
+     - build/ios/ipa/*.ipa
+     - /tmp/xcodebuild_logs/*.log
+     - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+     - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
 
     publishing:
       email:
