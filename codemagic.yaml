@@ -1,13 +1,15 @@
 workflows:
-  expo-ios-development:
-    name: Expo iOS Development Build
+  expo-ios-release:
+    name: Expo iOS Release Build
     instance_type: mac_mini_m2
     working_directory: .
+
     environment:
       vars:
-        BUILD_NUMBER: "1"
         RCT_NO_LAUNCH_PACKAGER: "true"
         RCT_METRO_PORT: "8081"
+        CI: "1"                      # ensures Expo prebuild is non-interactive
+        BUILD_NUMBER: "1"
       node: 20
       java: 17
 
@@ -17,6 +19,7 @@ workflows:
         - .yarn/cache
         - .yarn/install-state.gz
         - .yarn/unplugged
+        - ios/Pods
         - ios/Podfile.lock
 
     triggering:
@@ -28,6 +31,10 @@ workflows:
           source: true
 
     scripts:
+
+      # ────────────────────────────────────────────────────────────────
+      # 1) Environment Setup
+      # ────────────────────────────────────────────────────────────────
       - name: Environment Setup
         script: |
           echo "--- System Information ---"
@@ -38,56 +45,117 @@ workflows:
           echo "--- Ruby $(ruby -v) ---"
           echo "--- CocoaPods $(pod --version) ---"
 
+      # ────────────────────────────────────────────────────────────────
+      # 2) Clean Workspace (Pods, DerivedData, etc.)
+      # ────────────────────────────────────────────────────────────────
       - name: Clean Workspace
         script: |
-          echo "--- Cleaning previous builds ---"
+          echo "--- Cleaning previous iOS build artifacts ---"
           cd ios
-          rm -rf Pods build DerivedData
+          rm -rf Pods Podfile.lock build DerivedData
           pod deintegrate || true
           cd ..
 
+      # ────────────────────────────────────────────────────────────────
+      # 3) Expo Prebuild → generate iOS/Android native projects
+      # ────────────────────────────────────────────────────────────────
+      - name: Expo Prebuild (iOS)
+        script: |
+          echo "--- Generating iOS native code from Expo config ---"
+          # CI=1 is already set globally in `environment.vars`
+          npx expo prebuild --platform ios
+          echo "--- Prebuild finished, listing ios/ folder: ---"
+          ls -la ios/
+
+      # ────────────────────────────────────────────────────────────────
+      # 4) Install JS Dependencies + CocoaPods
+      # ────────────────────────────────────────────────────────────────
       - name: Install Dependencies
         script: |
-          echo "--- Installing JS dependencies ---"
+          echo "--- Installing JS dependencies (yarn) ---"
           yarn install --network-timeout 600000 --ignore-engines
-          
-          echo "--- Installing CocoaPods ---"
+
+          echo "--- Installing CocoaPods dependencies ---"
           cd ios
+
+          # 4a) clear Boost (and all) from CocoaPods cache to avoid checksum mismatch
+          pod cache clean boost --all || true
+          pod cache clean --all || true
+
+          # 4b) force a fresh repo update, then install
+          pod repo update
           pod install --repo-update --clean-install
-          
-          # Verify workspace was created
+
+          # 4c) check workspace existence (pod install should have generated .xcworkspace)
           if [ -d "simpleiostodo.xcworkspace" ]; then
-            echo "Workspace generated successfully"
+            echo "✅ CocoaPods workspace created: simpleiostodo.xcworkspace"
           else
-            echo "No workspace generated, using project file"
+            echo "❗ WARNING: no .xcworkspace found, proceeding with .xcodeproj"
           fi
           cd ..
 
-      - name: Build Configuration
+      # ────────────────────────────────────────────────────────────────
+      # 5) Archive (Release) + Export IPA
+      # ────────────────────────────────────────────────────────────────
+      - name: Archive & Export IPA (App Store-ready)
         script: |
+          echo "--- Starting Xcode archive for Release build ---"
           cd ios
-          # Determine build command based on workspace existence
+
+          # Detect whether workspace exists, else use the .xcodeproj directly:
           if [ -d "simpleiostodo.xcworkspace" ]; then
-            BUILD_CMD="-workspace simpleiostodo.xcworkspace"
+            BUILD_TARGET="-workspace simpleiostodo.xcworkspace"
           else
-            BUILD_CMD="-project simpleiostodo.xcodeproj"
+            BUILD_TARGET="-project simpleiostodo.xcodeproj"
           fi
-          
-          echo "--- Building with command: xcodebuild $BUILD_CMD ---"
+
+          echo "--- Xcodebuild archive command: xcodebuild $BUILD_TARGET -scheme simpleiostodo ---"
           set -o pipefail && xcodebuild \
-            $BUILD_CMD \
+            $BUILD_TARGET \
             -scheme simpleiostodo \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -derivedDataPath build \
+            -configuration Release \
+            -sdk iphoneos \
             -UseModernBuildSystem=YES \
-            CODE_SIGNING_ALLOWED=NO \
-            clean build | tee xcodebuild.log
+            -derivedDataPath build \
+            archive \
+            -archivePath build/simpleiostodo.xcarchive \
+            | tee build/xcode_archive.log
+
+          echo "--- Exporting .xcarchive to .ipa using ExportOptions.plist ---"
+          # Assumes ExportOptions.plist is in the project root. Adjust path if needed:
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/simpleiostodo.xcarchive \
+            -exportOptionsPlist ../ExportOptions.plist \
+            -exportPath build \
+            | tee build/xcode_export.log
+
+          # Show produced IPA (or Payload folder) for debugging:
+          echo "--- Contents of build/ after export: ---"
+          ls -la build/
           cd ..
+
+      # ────────────────────────────────────────────────────────────────
+      # 6) (Optional) Run any unit tests or post-build verifications here
+      # ────────────────────────────────────────────────────────────────
+      # - name: Run iOS Tests
+      #   script: |
+      #     cd ios
+      #     xcodebuild test \
+      #       -workspace simpleiostodo.xcworkspace \
+      #       -scheme simpleiostodo \
+      #       -sdk iphonesimulator \
+      #       -destination 'platform=iOS Simulator,name=iPhone 14' \
+      #       -derivedDataPath build \
+      #       | tee build/xcode_test.log
+      #     cd ..
 
     artifacts:
-      - ios/build/**/*
-      - ios/xcodebuild.log
+      # Collect the final .ipa (or Payload folder) as a build artifact
+      - ios/build/*.ipa
+      - ios/build/Payload
+      - ios/build/xcode_export.log
+      - ios/build/xcode_archive.log
       - ios/Podfile.lock
 
     publishing:
