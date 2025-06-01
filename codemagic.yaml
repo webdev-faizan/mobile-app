@@ -17,7 +17,7 @@ workflows:
       - name: Install dependencies
         script: |
           cd $PROJECT_DIR
-          npm install
+          yarn install
 
       - name: Login to Expo
         script: |
