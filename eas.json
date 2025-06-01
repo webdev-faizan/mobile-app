@@ -1,24 +1,28 @@
 {
-    "cli": {
-      "version": ">=3.0.0"
-    },
-    "build": {
-      "ios-dev": {
-        "developmentClient": true,
-        "distribution": "internal",
-        "ios": {
-          "buildConfiguration": "Debug"
-        }
-      },
-      "ios-prod": {
-        "distribution": "store",
-        "ios": {
-          "buildConfiguration": "Release"
-        }
+  "cli": {
+    "version": ">=3.0.0"
+  },
+  "build": {
+    "ios-dev": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "buildConfiguration": "Debug"
       }
     },
-    "submit": {
-      "production": {}
+    "ios-prod": {
+      "distribution": "store",
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    },
+    "android-prod": {
+      "android": {
+        "buildType": "apk"
+      }
     }
+  },
+  "submit": {
+    "production": {}
   }
-  
+}
