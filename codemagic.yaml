@@ -76,36 +76,29 @@ workflows:
           echo "--- Pods directory contents ---"
           ls -la ios/Pods/
 
-      - name: Build Development Version
+      - name: Build and Export IPA
         script: |
-          echo "--- Building Development Version ---"
-          set -o pipefail && xcodebuild \
+          echo "--- Building .xcarchive ---"
+          xcodebuild archive \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
+            -configuration Release \
+            -archivePath ios/build/simple-ios-todo.xcarchive \
             -destination 'generic/platform=iOS' \
-            -quiet \
-            CODE_SIGNING_ALLOWED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            | xcpretty
+            CODE_SIGNING_ALLOWED=YES
 
-          if [ $? -ne 0 ]; then
-            echo "--- Fallback: Detailed build logs ---"
-            xcodebuild \
-              -workspace "$XCODE_WORKSPACE" \
-              -scheme "$XCODE_SCHEME" \
-              -configuration Debug \
-              -destination 'generic/platform=iOS' \
-              CODE_SIGNING_ALLOWED=NO \
-              | tee xcodebuild.log
+          echo "--- Exporting .ipa ---"
+          xcodebuild -exportArchive \
+            -archivePath ios/build/simple-ios-todo.xcarchive \
+            -exportOptionsPlist ios/exportOptions.plist \
+            -exportPath ios/build/export
 
-            mkdir -p build_logs
-            mv xcodebuild.log build_logs/
-          fi
+          echo "--- IPA build contents ---"
+          ls -la ios/build/export/
 
     artifacts:
       - build_logs/xcodebuild.log
-      - ios/build/**/*.log
+      - ios/build/export/*.ipa
 
     publishing:
       email:
