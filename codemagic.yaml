@@ -87,19 +87,20 @@ workflows:
             COMPILER_INDEX_STORE_ENABLE=NO \
             | xcpretty
 
-          # Alternative approach if the above fails
-          echo "--- Fallback: Detailed build logs ---"
-          xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            | tee xcodebuild.log
+          # Fallback detailed logs if needed
+          if [ $? -ne 0 ]; then
+            echo "--- Fallback: Detailed build logs ---"
+            xcodebuild \
+              -workspace "$XCODE_WORKSPACE" \
+              -scheme "$XCODE_SCHEME" \
+              -configuration Debug \
+              -destination 'generic/platform=iOS' \
+              CODE_SIGNING_ALLOWED=NO \
+              | tee xcodebuild.log
 
-          # Save the full build logs as artifact
-          mkdir -p build_logs
-          mv xcodebuild.log build_logs/
+            mkdir -p build_logs
+            mv xcodebuild.log build_logs/
+          fi
 
     artifacts:
       - build_logs/xcodebuild.log
