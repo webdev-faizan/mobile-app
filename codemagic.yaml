@@ -85,12 +85,7 @@ workflows:
       #     pod install --repo-update --allow-root
       #     cd ..
 
-      - name: Setup EAS CLI
-        script: |
-          echo "--- Installing EAS CLI ---"
-          npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
-          echo "--- EAS CLI version ---"
-          npx eas-cli --version
+     
 
       - name: Expo Prebuild
         script: |
@@ -104,6 +99,14 @@ workflows:
             else
              echo "❌ iOS folder does not exist"
               fi
+
+
+      - name: Setup EAS CLI
+        script: |
+          echo "--- Installing EAS CLI ---"
+          npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
+          echo "--- EAS CLI version ---"
+          npx eas-cli --version      
 
     #   - name: Install CocoaPods
     #     script: |
