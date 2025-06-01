@@ -34,6 +34,8 @@ workflows:
           echo "Xcode version: $(xcodebuild -version)"
           echo "Ruby version: $(ruby -v)"
           echo "CocoaPods version: $(pod --version)"
+          echo "--- Creating artifacts directory ---"
+          mkdir -p ios/build_artifacts
 
       - name: Install Dependencies
         script: |
@@ -65,39 +67,49 @@ workflows:
           echo "--- Building iOS App ---"
           cd ios
 
-          # Find the first workspace or project
-          XCODE_PROJ=$(find . -maxdepth 1 \( -name '*.xcworkspace' -o -name '*.xcodeproj' \) -print -quit)
+          # Clean previous builds
+          rm -rf build
+          mkdir -p build
 
-          if [ -z "$XCODE_PROJ" ]; then
-            echo "❌ Error: No Xcode project found!"
-            ls -la
-            exit 1
+          # Find project file
+          PROJECT_FILE=$(find . -maxdepth 1 \( -name '*.xcworkspace' -o -name '*.xcodeproj' \) -print -quit)
+          [ -z "$PROJECT_FILE" ] && { echo "❌ No Xcode project found"; ls -la; exit 1; }
+          echo "Using project file: $PROJECT_FILE"
+
+          # Build command
+          if [[ $PROJECT_FILE == *.xcworkspace ]]; then
+            xcodebuild -workspace "$PROJECT_FILE" \
+              -configuration Debug \
+              -sdk iphonesimulator \
+              -derivedDataPath build \
+              -destination 'platform=iOS Simulator,name=iPhone 15' \
+              clean build
+          else
+            xcodebuild -project "$PROJECT_FILE" \
+              -configuration Debug \
+              -sdk iphonesimulator \
+              -derivedDataPath build \
+              -destination 'platform=iOS Simulator,name=iPhone 15' \
+              clean build
           fi
 
-          echo "Found Xcode project: $XCODE_PROJ"
-
-          # Clean previous build
-          rm -rf build_output
-          mkdir -p build_output
-
-          # Build without specifying scheme
-          xcodebuild \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -derivedDataPath build_output \
-            -destination 'platform=iOS Simulator,name=iPhone 15' \
-            clean build
-
-          echo "--- Build products ---"
-          find build_output -type d -name "*.app" -exec du -sh {} \;
+          # Collect artifacts
+          echo "--- Collecting build artifacts ---"
+          find build -name "*.app" -exec cp -R {} build_artifacts \;
+          find build -name "*.dSYM" -exec cp -R {} build_artifacts \;
+          find build -name "*.log" -exec cp {} build_artifacts \;
+          
+          # Verify artifacts
+          echo "--- Artifacts collected ---"
+          ls -lh build_artifacts
+          echo "--- Build directory structure ---"
+          find build -type f | head -50
           echo "--- iOS Build Complete ---"
           cd ..
 
     artifacts:
-      - ios/build_output/Build/**/*.app
-      - ios/build_output/Build/**/*.dSYM
-      - ios/build_output/Build/**/*.log
-      - ios/build_output/Logs/**/*.log
+      - ios/build_artifacts/**/*
+      - ios/build/**/*.log
 
     publishing:
       email:

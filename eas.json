@@ -1,0 +1,24 @@
+{
+    "cli": {
+      "version": ">=3.0.0"
+    },
+    "build": {
+      "ios-dev": {
+        "developmentClient": true,
+        "distribution": "internal",
+        "ios": {
+          "buildConfiguration": "Debug"
+        }
+      },
+      "ios-prod": {
+        "distribution": "store",
+        "ios": {
+          "buildConfiguration": "Release"
+        }
+      }
+    },
+    "submit": {
+      "production": {}
+    }
+  }
+  
