@@ -13,7 +13,8 @@
     "ios-prod": {
       "distribution": "store",
       "ios": {
-        "buildConfiguration": "Release"
+        "buildConfiguration": "Release",
+        "simulator": false
       }
     },
     "android-prod": {
