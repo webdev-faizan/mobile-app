@@ -11,6 +11,7 @@ workflows:
         BUILD_NUMBER: "1"
       node: 20
       xcode: 15.0
+      ruby: 3.1.2
       cocoapods: default
 
     cache:
@@ -31,74 +32,81 @@ workflows:
           source: true
 
     scripts:
-      - name: Setup Environment
+      - name: Environment Setup
         script: |
-          echo "--- Node version ---"
-          node -v
-          echo "--- Yarn version ---"
-          yarn -v
-          echo "--- npm version ---"
-          npm -v
-          echo "--- Xcode version ---"
-          xcodebuild -version
-          echo "--- CocoaPods version ---"
-          pod --version
+          echo "=== System Info ==="
+          sw_vers
+          echo "--- Node $(node -v) ---"
+          echo "--- Yarn $(yarn -v) ---"
+          echo "--- Xcode $(xcodebuild -version | head -n 1) ---"
+          echo "--- Ruby $(ruby -v) ---"
+          echo "--- CocoaPods $(pod --version) ---"
 
       - name: Install Dependencies
         script: |
-          echo "--- Cleaning npm cache ---"
+          echo "--- Cleaning caches ---"
           npm cache clean --force
-          echo "--- Installing Yarn dependencies ---"
-          yarn install --network-timeout 600000 --ignore-engines
+          yarn cache clean
+          echo "--- Installing dependencies ---"
+          yarn install --network-timeout 600000 --frozen-lockfile
 
-      - name: Setup EAS CLI
+      - name: EAS CLI Setup
         script: |
-          echo "--- Installing EAS CLI ---"
-          npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
-          echo "--- EAS CLI version ---"
-          npx eas-cli --version
+          npm install -g eas-cli@latest
+          eas --version
 
       - name: Expo Prebuild
         script: |
-          echo "--- Generating iOS Native Code ---"
+          echo "--- Generating native code ---"
           npx expo prebuild --platform ios --non-interactive
-          echo "--- Prebuild contents verification ---"
+          echo "--- iOS directory structure ---"
           ls -la ios/
 
-      - name: Fix ffi and Pod Architecture Compatibility
+      - name: CocoaPods Setup
         script: |
-          echo "--- Installing ffi for Intel architecture ---"
-          sudo arch -x86_64 gem install ffi
-          echo "--- Installing Pods (Intel arch) ---"
-          cd ios
-          arch -x86_64 pod install --repo-update --verbose
-          cd ..
-          echo "--- Pods directory contents ---"
-          ls -la ios/Pods/
+          echo "--- Updating CocoaPods ---"
+          sudo gem install cocoapods -v 1.14.2
+          pod setup --verbose
+          echo "--- Pod environment ---"
+          pod env
 
-      - name: Build and Export IPA
+      - name: Pod Installation
         script: |
-          echo "--- Building .xcarchive ---"
+          echo "--- Preparing Pods ---"
+          cd ios
+          pod cache clean --all
+          rm -rf Pods Podfile.lock
+          echo "--- Podfile Content ---"
+          cat Podfile || echo "No Podfile found"
+          echo "--- Installing Pods ---"
+          pod install --repo-update --verbose
+          echo "--- Pods directory ---"
+          ls -la Pods/
+          cd ..
+
+      - name: Xcode Build
+        script: |
+          echo "--- Building archive ---"
           xcodebuild archive \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
-            -archivePath ios/build/simple-ios-todo.xcarchive \
+            -archivePath build/simple-ios-todo.xcarchive \
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=YES
 
-          echo "--- Exporting .ipa ---"
+          echo "--- Exporting IPA ---"
           xcodebuild -exportArchive \
-            -archivePath ios/build/simple-ios-todo.xcarchive \
+            -archivePath build/simple-ios-todo.xcarchive \
             -exportOptionsPlist ios/exportOptions.plist \
-            -exportPath ios/build/export
+            -exportPath build/export
 
-          echo "--- IPA build contents ---"
-          ls -la ios/build/export/
+          echo "--- Build artifacts ---"
+          ls -la build/export/
 
     artifacts:
-      - build_logs/xcodebuild.log
-      - ios/build/export/*.ipa
+      - build/export/*.ipa
+      - build_logs/**/*
 
     publishing:
       email:
