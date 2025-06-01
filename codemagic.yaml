@@ -15,6 +15,8 @@ workflows:
 
     cache:
       cache_paths:
+        - ~/.expo
+        - ~/.cache/expo
         - ~/Library/Caches/CocoaPods
         - ios/Pods
         - node_modules
@@ -50,67 +52,35 @@ workflows:
           sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           echo "--- Verifying xcode-select path ---"
           xcode-select -p
-
-          echo "--- Installing/Updating CocoaPods gem ---"
+          echo "--- Installing CocoaPods gem ---"
           sudo gem install cocoapods
-
-          # If you want to use Homebrew instead, comment above and uncomment below:
-          # echo "--- Uninstalling CocoaPods gem (if present) ---"
-          # sudo gem uninstall cocoapods || true
-          # echo "--- Installing CocoaPods via Homebrew ---"
-          # brew install cocoapods
-          # echo "--- Linking CocoaPods binaries (if needed) ---"
-          # brew link --overwrite cocoapods
-
           echo "--- Verifying CocoaPods version ---"
           pod --version
 
-      - name: Install Dependencies
+      - name: Clean Workspace
+        script: |
+          echo "--- Cleaning previous builds ---"
+          rm -rf ios/build ios/Pods
+
+      - name: Install JS Dependencies
         script: |
           echo "--- Cleaning npm cache ---"
           npm cache clean --force
           echo "--- Installing Yarn dependencies ---"
           yarn install --network-timeout 600000 --ignore-engines
-
-          echo "--- Ensuring expo is installed ---"
-          yarn add expo
-          pod install --repo-update
-
-
-
-      # - name: Install Pods
-      #   script: |
-      #     echo "--- Removing ios/Pods and node_modules folders ---"
-      #     rm -rf ios/Pods node_modules
-      #     echo "--- Installing Pods ---"
-      #     cd ios
-      #     pod install --repo-update --allow-root
-      #     cd ..
-
-     
+          echo "--- Checking expo-cli ---"
+          yarn global add expo-cli
 
       - name: Expo Prebuild
         script: |
           echo "--- Generating iOS Native Code ---"
-          CI=1 npx expo prebuild --platform ios
-          echo "--- Prebuild contents verification ---"
+          CI=1 npx expo prebuild --platform ios --clean
+          echo "--- Verifying generated files ---"
           ls -la ios/
-          if [ -d "ios" ]; then
-          echo "✅ iOS folder exists"
-           ls -la ios/
-            else
-             echo "❌ iOS folder does not exist"
-              fi
+          echo "--- Updated Podfile content ---"
+          cat ios/Podfile
 
-
-      - name: Setup EAS CLI
-        script: |
-          echo "--- Installing EAS CLI ---"
-          npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
-          echo "--- EAS CLI version ---"
-          npx eas-cli --version      
-
-      - name: Install CocoaPods
+      - name: Install Pods
         script: |
           echo "--- Installing Pods ---"
           cd ios
@@ -132,30 +102,19 @@ workflows:
             COMPILER_INDEX_STORE_ENABLE=NO \
             | xcpretty
 
-    #       # Alternative approach if the above fails
-    #       echo "--- Fallback: Detailed build logs ---"
-    #       xcodebuild \
-    #         -workspace "$XCODE_WORKSPACE" \
-    #         -scheme "$XCODE_SCHEME" \
-    #         -configuration Debug \
-    #         -destination 'generic/platform=iOS' \
-    #         CODE_SIGNING_ALLOWED=NO \
-    #         | tee xcodebuild.log
+      - name: Verify Build Artifacts
+        script: |
+          echo "--- Checking build outputs ---"
+          find ~/Library/Developer/Xcode/DerivedData -name "*.app" -print
+          find ~/Library/Developer/Xcode/DerivedData -name "*.dSYM" -print
 
-    #       # Save the full build logs as artifact
-    #       mkdir -p build_logs
-    #       mv xcodebuild.log build_logs/
+    artifacts:
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
 
-    # artifacts:
-    #   - build/ios/ipa/*.ipa
-    #   - /tmp/xcodebuild_logs/*.log
-    #   - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
-    #   - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
-    #   - ios/build/**/*.log
-
-    # publishing:
-    #   email:
-    #     recipients:
-    #       - webdev.faizanali@gmail.com
-    #   slack:
-    #     channel: "#build-notifications"
+    publishing:
+      email:
+        recipients:
+          - webdev.faizanali@gmail.com
+      slack:
+        channel: "#build-notifications"
