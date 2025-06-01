@@ -39,6 +39,7 @@ workflows:
           echo "System architecture: $(uname -m)"
           echo "Available memory: $(sysctl -n hw.memsize | awk '{print $0/1073741824" GB"}')"
           
+          # Set environment variables
           export NODE_OPTIONS=--max_old_space_size=4096
           export LANG=en_US.UTF-8
           export LC_ALL=en_US.UTF-8
@@ -56,7 +57,9 @@ workflows:
           rm -f ios-device-build.zip
           rm -rf ios/
           find . -name "*.log" -delete
+          # Clear derived data
           rm -rf ~/Library/Developer/Xcode/DerivedData/*
+          # Clear CocoaPods cache to fix checksum issues
           pod cache clean --all || echo "Pod cache clean failed, continuing..."
           rm -rf ~/Library/Caches/CocoaPods
 
@@ -76,19 +79,27 @@ workflows:
       - name: Prebuild iOS Project
         script: |
           echo "--- Running expo prebuild ---"
+          # Remove the ios directory first to ensure clean prebuild
           rm -rf ios/
+          
+          # Use correct expo prebuild syntax
           npx expo prebuild --platform ios --clean
           
           echo "--- Verifying prebuild files ---"
+          # Check if ios directory was created
           if [ ! -d "ios/" ]; then
             echo "Error: ios directory was not created by expo prebuild"
+            echo "Available directories:"
             ls -la .
             exit 1
           fi
           
+          # Check for the Xcode project file (created by expo prebuild)
           if [ ! -f "ios/simple-ios-todo.xcodeproj/project.pbxproj" ]; then
-            echo "Error: Xcode project not found"
+            echo "Error: Xcode project not found at ios/simple-ios-todo.xcodeproj/project.pbxproj"
+            echo "Available files in ios directory:"
             ls -la ios/ || echo "ios directory exists but cannot list contents"
+            echo "Looking for any .xcodeproj files:"
             find ios/ -name "*.xcodeproj" -type d 2>/dev/null || echo "No .xcodeproj files found"
             exit 1
           fi
@@ -103,7 +114,10 @@ workflows:
       - name: Update CocoaPods Repository
         script: |
           echo "--- Updating CocoaPods repository ---"
+          # Update CocoaPods repo to get latest podspecs
           pod repo update --verbose || echo "Pod repo update failed, continuing with existing repo"
+          
+          # Clear any existing cache
           pod cache clean --all || echo "Pod cache clean failed, continuing..."
 
       - name: Install CocoaPods with Retry Logic
@@ -111,24 +125,43 @@ workflows:
           echo "--- Installing pods with retry logic ---"
           cd ios
           
+          # Function to attempt pod install
           install_pods() {
             local attempt=$1
             echo "Attempt $attempt: Installing CocoaPods dependencies..."
             
+            # Try different approaches based on attempt number
             case $attempt in
-              1) pod install --repo-update --verbose ;;
-              2) pod cache clean --all || true
-                 pod install --repo-update --verbose ;;
-              3) pod install --verbose ;;
-              4) if ! grep -q "platform :ios" Podfile; then
-                   echo "platform :ios, '12.4'" | cat - Podfile > temp && mv temp Podfile
-                 fi
-                 pod install --verbose ;;
-              5) pod deintegrate || true
-                 pod install --repo-update --verbose ;;
+              1)
+                echo "Standard installation attempt..."
+                pod install --repo-update --verbose
+                ;;
+              2)
+                echo "Attempting with clean cache..."
+                pod cache clean --all || true
+                pod install --repo-update --verbose
+                ;;
+              3)
+                echo "Attempting without repo update..."
+                pod install --verbose
+                ;;
+              4)
+                echo "Attempting with deployment target fix..."
+                # Add deployment target to Podfile if not present
+                if ! grep -q "platform :ios" Podfile; then
+                  echo "platform :ios, '12.4'" | cat - Podfile > temp && mv temp Podfile
+                fi
+                pod install --verbose
+                ;;
+              5)
+                echo "Final attempt with deintegration and reinstall..."
+                pod deintegrate || true
+                pod install --repo-update --verbose
+                ;;
             esac
           }
           
+          # Retry logic
           max_attempts=5
           attempt=1
           
@@ -149,16 +182,20 @@ workflows:
           
           cd ..
           
+          # Verify that both the workspace and Pods directory were created
           if [ ! -d "ios/Pods" ]; then
             echo "Error: Pods directory not created"
+            echo "Contents of ios directory:"
             ls -la ios/
             exit 1
           fi
           
+          # Check for workspace file (could be either .xcworkspace directory or file)
           if [ ! -d "ios/simple-ios-todo.xcworkspace" ] && [ ! -f "ios/simple-ios-todo.xcworkspace" ]; then
             echo "Warning: Workspace not found, checking for project file instead..."
             if [ ! -f "ios/simple-ios-todo.xcodeproj/project.pbxproj" ]; then
               echo "Error: Neither workspace nor project file found"
+              echo "Available files in ios directory:"
               ls -la ios/
               exit 1
             else
@@ -172,8 +209,11 @@ workflows:
         script: |
           echo "--- Building for iOS Device (IPA) ---"
           set -o pipefail
+          
+          # Clear xcodebuild cache
           rm -rf ~/Library/Developer/Xcode/DerivedData/*
           
+          # Determine whether to use workspace or project
           if [ -d "ios/simple-ios-todo.xcworkspace" ] || [ -f "ios/simple-ios-todo.xcworkspace" ]; then
             BUILD_TARGET="-workspace ios/simple-ios-todo.xcworkspace"
             echo "Using workspace for build"
@@ -182,11 +222,13 @@ workflows:
             echo "Using project for build"
           fi
           
+          # Clean first
           xcodebuild clean \
             $BUILD_TARGET \
             -scheme "simple-ios-todo" \
             -configuration Debug
 
+          # Build archive for device
           echo "Starting device archive process..."
           xcodebuild archive \
             $BUILD_TARGET \
@@ -206,29 +248,12 @@ workflows:
           BUILD_EXIT_CODE=${PIPESTATUS[0]}
           echo "--- Device archive exit code: $BUILD_EXIT_CODE ---"
           
+          # Export archive to .ipa
           if [ $BUILD_EXIT_CODE -eq 0 ]; then
             echo "--- Exporting archive to IPA ---"
             
-            cat > ios/ExportOptions.plist << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>method</key>
-    <string>development</string>
-    <key>signingStyle</key>
-    <string>manual</string>
-    <key>stripSwiftSymbols</key>
-    <true/>
-    <key>uploadBitcode</key>
-    <false/>
-    <key>uploadSymbols</key>
-    <false/>
-    <key>compileBitcode</key>
-    <false/>
-</dict>
-</plist>
-EOF
+            # Create export options plist for development using printf
+            printf '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n    <key>method</key>\n    <string>development</string>\n    <key>signingStyle</key>\n    <string>manual</string>\n    <key>stripSwiftSymbols</key>\n    <true/>\n    <key>uploadBitcode</key>\n    <false/>\n    <key>uploadSymbols</key>\n    <false/>\n    <key>compileBitcode</key>\n    <false/>\n</dict>\n</plist>' > ios/ExportOptions.plist
             
             xcodebuild -exportArchive \
               -archivePath ios/build/simple-ios-todo.xcarchive \
@@ -242,6 +267,7 @@ EOF
               echo "--- Device build and export completed successfully ---"
             else
               echo "--- Export failed, trying alternative method ---"
+              # Alternative: create IPA manually from .app
               APP_PATH=$(find ios/build/simple-ios-todo.xcarchive -name "*.app" -type d -print -quit 2>/dev/null)
               if [ -d "$APP_PATH" ]; then
                 echo "Creating IPA manually from app bundle..."
@@ -254,19 +280,25 @@ EOF
               else
                 echo "--- Archive creation failed ---"
                 tail -50 xcodebuild-device.log
+                # Continue to simulator build even if device build fails
               fi
             fi
           else
             echo "--- Device build failed, continuing to simulator build ---"
+            echo "--- Build errors ---"
             grep -i "error:" xcodebuild-device.log | tail -10 || echo "No specific errors found"
+            # Don't exit, continue to simulator build
           fi
 
       - name: Build iOS Simulator
         script: |
           echo "--- Building for iOS Simulator ---"
           set -o pipefail
+          
+          # Clear xcodebuild cache
           rm -rf ~/Library/Developer/Xcode/DerivedData/*
           
+          # Determine whether to use workspace or project
           if [ -d "ios/simple-ios-todo.xcworkspace" ] || [ -f "ios/simple-ios-todo.xcworkspace" ]; then
             BUILD_TARGET="-workspace ios/simple-ios-todo.xcworkspace"
             echo "Using workspace for build"
@@ -275,11 +307,13 @@ EOF
             echo "Using project for build"
           fi
           
+          # Clean first
           xcodebuild clean \
             $BUILD_TARGET \
             -scheme "simple-ios-todo" \
             -configuration Debug
 
+          # Build for simulator
           echo "Starting simulator build process..."
           xcodebuild \
             $BUILD_TARGET \
@@ -299,12 +333,16 @@ EOF
           BUILD_EXIT_CODE=${PIPESTATUS[0]}
           echo "--- Simulator build exit code: $BUILD_EXIT_CODE ---"
           
+          # Check if build succeeded
           if [ $BUILD_EXIT_CODE -eq 0 ] && grep -q "BUILD SUCCEEDED" xcodebuild-simulator.log; then
             echo "--- Simulator build completed successfully ---"
           else
             echo "--- Simulator build failed ---"
+            echo "--- Build errors ---"
             grep -i "error:" xcodebuild-simulator.log | tail -10 || echo "No specific errors found"
+            echo "--- Build warnings ---"
             grep -i "warning:" xcodebuild-simulator.log | tail -5 || echo "No warnings found"
+            echo "--- Last 50 lines of build log ---"
             tail -50 xcodebuild-simulator.log
             exit 1
           fi
@@ -314,45 +352,24 @@ EOF
           echo "--- Packaging device build artifacts ---"
           mkdir -p ios_device_build
           
+          # Find the .ipa file
           IPA_PATH=$(find ios/build/export -name "*.ipa" -type f -print -quit 2>/dev/null)
           
           if [ -f "$IPA_PATH" ]; then
             echo "Found IPA at: $IPA_PATH"
             cp "$IPA_PATH" ios_device_build/
             
+            # Also find and copy the .app bundle from archive
             APP_PATH=$(find ios/build/simple-ios-todo.xcarchive -name "*.app" -type d -print -quit 2>/dev/null)
             if [ -d "$APP_PATH" ]; then
               echo "Found device app bundle at: $APP_PATH"
               cp -R "$APP_PATH" ios_device_build/simple-ios-todo-device.app
             fi
             
-            cat > ios_device_build/README.txt << EOF
-iOS Device Build - Installation Instructions
-==========================================
-
-Files included:
-- simple-ios-todo.ipa (for installation on physical devices)
-- simple-ios-todo-device.app (app bundle from archive)
-
-Installation Options:
-
-1. Using Xcode (Recommended):
-   - Connect your iOS device to your Mac
-   - Open Xcode and go to Window > Devices and Simulators
-   - Select your device and drag the .ipa file to the "Installed Apps" section
-
-2. Using iOS App Installer (if available):
-   - Transfer the .ipa file to your iOS device
-   - Tap the file to install (requires developer profile)
-
-3. Using 3rd party tools:
-   - Use tools like AltStore, Sideloadly, or similar
-   - Follow their specific installation instructions
-
-Note: This is a development build and may require a developer certificate
-to install on physical devices.
-EOF
+            # Create installation instructions using printf
+            printf 'iOS Device Build - Installation Instructions\n==========================================\n\nFiles included:\n- simple-ios-todo.ipa (for installation on physical devices)\n- simple-ios-todo-device.app (app bundle from archive)\n\nInstallation Options:\n\n1. Using Xcode (Recommended):\n   - Connect your iOS device to your Mac\n   - Open Xcode and go to Window > Devices and Simulators\n   - Select your device and drag the .ipa file to the "Installed Apps" section\n\n2. Using iOS App Installer (if available):\n   - Transfer the .ipa file to your iOS device\n   - Tap the file to install (requires developer profile)\n\n3. Using 3rd party tools:\n   - Use tools like AltStore, Sideloadly, or similar\n   - Follow their specific installation instructions\n\nNote: This is a development build and may require a developer certificate\nto install on physical devices.\n' > ios_device_build/README.txt
             
+            # Create both tar and zip archives for better compatibility
             tar -czf ios-device-build.tar.gz -C ios_device_build .
             cd ios_device_build && zip -r ../ios-device-build.zip . && cd ..
             
@@ -364,7 +381,9 @@ EOF
             echo "--- Device packaging completed successfully ---"
           else
             echo "Warning: .ipa file not found, device build may have failed"
+            echo "--- Contents of build directory ---"
             find ios/build -name "*.ipa" -o -name "*.app" 2>/dev/null || echo "No device app files found"
+            # Create empty device build directory so artifacts don't fail
             touch ios_device_build/.empty
             tar -czf ios-device-build.tar.gz -C ios_device_build .
           fi
@@ -374,6 +393,7 @@ EOF
           echo "--- Packaging simulator build artifacts ---"
           mkdir -p ios_simulator_build
           
+          # Find the .app bundle with comprehensive search
           APP_PATH=$(find ios/build/simulator -name "*.app" -type d -print -quit 2>/dev/null)
           
           if [ -z "$APP_PATH" ]; then
@@ -385,32 +405,10 @@ EOF
             echo "Found simulator app bundle at: $APP_PATH"
             cp -R "$APP_PATH" ios_simulator_build/
             
-            cat > ios_simulator_build/README.txt << EOF
-iOS Simulator Build - Installation Instructions
-==============================================
-
-This is a simulator build (.app) that can only be installed on iOS Simulator.
-
-Installation Steps:
-1. Open iOS Simulator (Xcode > Open Developer Tool > Simulator)
-2. Boot your preferred iOS simulator device
-3. Drag and drop the .app file onto the simulator screen
-4. The app should install and appear on the home screen
-
-Alternative Installation Method:
-1. Open iOS Simulator
-2. Go to Device > Install App... in the simulator menu
-3. Select the .app file from this package
-
-Note: This build will NOT work on physical iOS devices.
-For device installation, use the device build package instead.
-
-Simulator Requirements:
-- Xcode with iOS Simulator installed
-- macOS system
-- iOS 12.4 or later simulator
-EOF
+            # Create installation instructions using printf
+            printf 'iOS Simulator Build - Installation Instructions\n=============================================\n\nFiles included:\n- simple-ios-todo.app (simulator app bundle)\n\nInstallation Options:\n\n1. Using Xcode Simulator:\n   - Open Xcode and launch iOS Simulator\n   - Drag the .app file onto the simulator\n   - The app will be installed and ready to run\n\n2. Using Command Line:\n   - xcrun simctl install booted /path/to/simple-ios-todo.app\n   - xcrun simctl launch booted com.yourcompany.simple-ios-todo\n\n3. Using Simulator Menu:\n   - In Simulator, go to Device > Install App\n   - Select the .app bundle\n\nNote: This build only works in iOS Simulator, not on physical devices.\n' > ios_simulator_build/README.txt
             
+            # Create both tar and zip archives for better compatibility
             tar -czf ios-simulator-build.tar.gz -C ios_simulator_build .
             cd ios_simulator_build && zip -r ../ios-simulator-build.zip . && cd ..
             
@@ -422,7 +420,9 @@ EOF
             echo "--- Simulator packaging completed successfully ---"
           else
             echo "Error: Simulator .app bundle not found"
+            echo "--- Contents of simulator build directory ---"
             find ios/build/simulator -type f -name "*.app" -o -name "*.ipa" -o -name "*simple-ios-todo*" 2>/dev/null || echo "No simulator app files found"
+            echo "--- All directories in simulator build ---"
             find ios/build/simulator -type d -name "*simple*" -o -name "*ios*" -o -name "*Debug*" 2>/dev/null || echo "No relevant directories found"
             exit 1
           fi
@@ -433,6 +433,7 @@ EOF
           echo "=== Device Build ==="
           if [ -f "ios-device-build.tar.gz" ]; then
             echo "✓ Device tar archive found"
+            echo "Device archive contents:"
             tar -ztvf ios-device-build.tar.gz | head -10
           else
             echo "✗ Device tar archive not found"
@@ -448,8 +449,10 @@ EOF
           echo "=== Simulator Build ==="
           if [ -f "ios-simulator-build.tar.gz" ]; then
             echo "✓ Simulator tar archive found"
+            echo "Simulator archive contents:"
             tar -ztvf ios-simulator-build.tar.gz | head -10
             
+            # Verify .app is in archive
             if tar -ztvf ios-simulator-build.tar.gz | grep -q "\.app/"; then
               echo "✓ App bundle found in simulator archive"
             else
@@ -475,17 +478,24 @@ EOF
           echo "--- Build verification completed ---"
 
     artifacts:
+      # Device build artifacts (IPA for physical devices)
       - ios_device_build/*.ipa
       - ios_device_build/*.app
       - ios-device-build.tar.gz
       - ios-device-build.zip
+      
+      # Simulator build artifacts
       - ios_simulator_build/*.app
       - ios-simulator-build.tar.gz
       - ios-simulator-build.zip
+      
+      # Build logs and metadata
       - ios/build/**/*.log
       - xcodebuild-device.log
       - xcodebuild-simulator.log
       - ios/Podfile.lock
+      
+      # Installation instructions
       - ios_device_build/README.txt
       - ios_simulator_build/README.txt
 
