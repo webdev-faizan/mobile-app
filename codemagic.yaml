@@ -6,9 +6,8 @@ workflows:
     environment:
       vars:
         BUILD_NUMBER: "1"
-        # Add environment variables for React Native
-        RCT_NO_LAUNCH_PACKAGER: true
-        RCT_METRO_PORT: 8081
+        RCT_NO_LAUNCH_PACKAGER: "true"
+        RCT_METRO_PORT: "8081"
       node: 20
       java: 17
 
@@ -18,8 +17,7 @@ workflows:
         - .yarn/cache
         - .yarn/install-state.gz
         - .yarn/unplugged
-        # Remove Pods from cache since it's causing issues
-        # - ios/Pods
+        - ios/Podfile.lock
 
     triggering:
       events:
@@ -30,81 +28,54 @@ workflows:
           source: true
 
     scripts:
-      - name: Setup Environment
+      - name: Environment Setup
         script: |
-          echo "--- System Info ---"
+          echo "--- System Information ---"
           sw_vers
-          echo "--- Node version ---"
-          node -v
-          echo "--- Yarn version ---"
-          yarn -v
-          echo "--- Xcode version ---"
-          xcodebuild -version
-          echo "--- Ruby version ---"
-          ruby -v
-          echo "--- CocoaPods version ---"
-          pod --version
+          echo "--- Node $(node -v) ---"
+          echo "--- Yarn $(yarn -v) ---"
+          echo "--- Xcode $(xcodebuild -version | head -n 1) ---"
+          echo "--- Ruby $(ruby -v) ---"
+          echo "--- CocoaPods $(pod --version) ---"
 
       - name: Clean Workspace
         script: |
           echo "--- Cleaning previous builds ---"
           cd ios
-          rm -rf Pods Podfile.lock build DerivedData
+          rm -rf Pods build DerivedData
+          pod deintegrate || true
           cd ..
 
-      - name: Install JavaScript Dependencies
+      - name: Install Dependencies
         script: |
-          echo "--- Installing Yarn dependencies ---"
+          echo "--- Installing JS dependencies ---"
           yarn install --network-timeout 600000 --ignore-engines
-
-      - name: Install CocoaPods (with retries)
-        script: |
+          
           echo "--- Installing CocoaPods ---"
           cd ios
-          # Force complete reinstall of pods
-          pod deintegrate || true
-          pod cache clean --all
+          pod install --repo-update --clean-install
           
-          # Install with retries
-          MAX_RETRIES=3
-          for i in $(seq 1 $MAX_RETRIES); do
-            echo "Attempt $i of $MAX_RETRIES"
-            if pod install --repo-update --clean-install; then
-              echo "Pods installed successfully"
-              break
-            else
-              echo "Pod install failed"
-              if [ $i -eq $MAX_RETRIES ]; then
-                echo "Max retries reached"
-                exit 1
-              fi
-              sleep 5
-            fi
-          done
-          
-          # Verify critical files exist
-          if [ ! -f "Pods/Target Support Files/Pods-simpleiostodo/Pods-simpleiostodo.debug.xcconfig" ]; then
-            echo "Critical Pods files missing!"
-            ls -la "Pods/Target Support Files/Pods-simpleiostodo/" || true
-            exit 1
+          # Verify workspace was created
+          if [ -d "simpleiostodo.xcworkspace" ]; then
+            echo "Workspace generated successfully"
+          else
+            echo "No workspace generated, using project file"
           fi
           cd ..
 
-      - name: Fix React Native Script Phases
+      - name: Build Configuration
         script: |
-          echo "--- Fixing React Native script phases ---"
           cd ios
-          # Make script phases always run (removes warnings)
-          perl -i -pe 's/baseConfigurationReference = .*?;/baseConfigurationReference = "";/g' simpleiostodo.xcodeproj/project.pbxproj
-          perl -i -pe 's/alwaysOutOfDate = 0;/alwaysOutOfDate = 1;/g' simpleiostodo.xcodeproj/project.pbxproj
-          cd ..
-
-      - name: Build iOS App
-        script: |
-          echo "--- Building iOS App ---"
-          cd ios
+          # Determine build command based on workspace existence
+          if [ -d "simpleiostodo.xcworkspace" ]; then
+            BUILD_CMD="-workspace simpleiostodo.xcworkspace"
+          else
+            BUILD_CMD="-project simpleiostodo.xcodeproj"
+          fi
+          
+          echo "--- Building with command: xcodebuild $BUILD_CMD ---"
           set -o pipefail && xcodebuild \
-            -project simpleiostodo.xcodeproj \
+            $BUILD_CMD \
             -scheme simpleiostodo \
             -configuration Debug \
             -sdk iphonesimulator \
@@ -113,13 +84,11 @@ workflows:
             CODE_SIGNING_ALLOWED=NO \
             clean build | tee xcodebuild.log
           cd ..
-          echo "--- Build Complete ---"
 
     artifacts:
       - ios/build/**/*
       - ios/xcodebuild.log
       - ios/Podfile.lock
-      - ios/Pods/Manifest.lock
 
     publishing:
       email:
