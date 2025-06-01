@@ -8,6 +8,8 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
+    "platforms": ["ios", "android"],
+
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
