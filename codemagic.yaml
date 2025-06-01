@@ -67,7 +67,7 @@ workflows:
       - name: Run custom bash script
         script: |
           echo "--- Running custom bash script ---"
-          ./.bash
+          # ./.bash
 
       - name: Clean Workspace
         script: |
