@@ -1,3 +1,5 @@
+cocoapods: 1.14.2
+
 workflows:
   expo-ios-development:
     name: Expo iOS Development Build
@@ -11,8 +13,8 @@ workflows:
         BUILD_NUMBER: "1"
       node: 20
       xcode: 15.0
-      ruby: 3.1.2
-      cocoapods: default
+      ruby: 3.1.4  # Changed from 3.1.2 to a more reliably installable version
+      cocoapods: 1.14.2
 
     cache:
       cache_paths:
@@ -32,6 +34,13 @@ workflows:
           source: true
 
     scripts:
+      - name: System Dependencies
+        script: |
+          echo "--- Installing system dependencies ---"
+          brew update
+          brew install openssl readline libyaml gmp
+          brew cleanup
+
       - name: Environment Setup
         script: |
           echo "=== System Info ==="
@@ -41,6 +50,14 @@ workflows:
           echo "--- Xcode $(xcodebuild -version | head -n 1) ---"
           echo "--- Ruby $(ruby -v) ---"
           echo "--- CocoaPods $(pod --version) ---"
+
+      - name: Verify Ruby Installation
+        script: |
+          if ! ruby -v; then
+            echo "Ruby installation failed!"
+            exit 1
+          fi
+          gem install bundler
 
       - name: Install Dependencies
         script: |
@@ -87,6 +104,7 @@ workflows:
       - name: Xcode Build
         script: |
           echo "--- Building archive ---"
+          mkdir -p build
           xcodebuild archive \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
