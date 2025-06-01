@@ -58,6 +58,12 @@ workflows:
           echo "--- EAS CLI version ---"
           npx eas-cli --version
 
+      - name: Install Pods
+        script: |
+         cd ios
+         pod install --repo-update
+         cd ..
+         
       - name: Expo Prebuild
         script: |
           echo "--- Generating iOS Native Code ---"
