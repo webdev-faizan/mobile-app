@@ -11,13 +11,25 @@ workflows:
         - $HOME/Library/Caches/CocoaPods
         - $CM_BUILD_DIR/node_modules
     scripts:
-      - name: Install dependencies and prebuild
+      - name: Install dependencies using expo install
         script: |
-          yarn install --legacy-peer-deps
-          npx expo prebuild
+          npm install -g expo-cli
+          npx expo install
+
+      - name: Prebuild clean iOS and Android project
+        script: |
+          rm -rf ios android
+          npx expo prebuild --clean --platform ios,android
+
+      - name: Downgrade CocoaPods for compatibility
+        script: |
+          sudo gem uninstall cocoapods -a -x || true
+          sudo gem install cocoapods -v 1.11.3
+
       - name: Install CocoaPods dependencies
         script: |
           cd ios && pod install
+
       - name: Build iOS app unsigned (skip signing)
         script: |
           xcodebuild -workspace ios/Bluesky.xcworkspace \
@@ -25,11 +37,12 @@ workflows:
             -configuration Debug \
             -sdk iphonesimulator \
             -derivedDataPath build
-          # This will build the app but not sign it for distribution
+
       - name: Build Android app unsigned (debug build)
         script: |
           cd android
           ./gradlew assembleDebug
+
     artifacts:
       - build/ios/Build/Products/Debug-iphonesimulator/*.app
       - android/app/build/outputs/apk/debug/*.apk
