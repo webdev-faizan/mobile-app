@@ -7,8 +7,7 @@ workflows:
       vars:
         BUILD_NUMBER: "1"
       node: 20
-      # java not required for iOS builds, but can keep if needed
-      java: 17
+      java: 17  # Optional for iOS, but kept for consistency
 
     cache:
       cache_paths:
@@ -16,6 +15,7 @@ workflows:
         - .yarn/cache
         - .yarn/install-state.gz
         - .yarn/unplugged
+        - ios/Pods  # Added Pods cache
 
     triggering:
       events:
@@ -50,6 +50,10 @@ workflows:
           echo "--- Installing CocoaPods dependencies ---"
           cd ios
           pod install --repo-update
+          echo "--- Verifying workspace generation ---"
+          if [ ! -d "../ios/simpleiostodo.xcworkspace" ]; then
+            echo "Using xcodeproj (no workspace generated)"
+          fi
           cd ..
 
       - name: Setup EAS CLI
@@ -70,20 +74,19 @@ workflows:
         script: |
           echo "--- Building iOS Development Archive ---"
           cd ios
-          xcodebuild -workspace simpleiostodo.xcworkspace \
+          xcodebuild -project simpleiostodo.xcodeproj \
             -scheme simpleiostodo \
             -configuration Debug \
             -sdk iphonesimulator \
             -derivedDataPath build \
-            clean build
+            clean build | tee xcodebuild.log
           cd ..
           echo "--- iOS Build Complete ---"
 
-      # Optional: upload artifacts or export IPA, you can integrate EAS build if preferred.
-
     artifacts:
-      - ios/build/**/*.xcarchive
-      - ios/build/**/*.log
+      - ios/build/**/*
+      - ios/xcodebuild.log
+      - ios/Podfile.lock  # Added for dependency tracking
 
     publishing:
       email:
