@@ -4,9 +4,11 @@ workflows:
     max_build_duration: 60
     environment:
       vars:
-        PROJECT_DIR: "."  # path to your React Native project
+        PROJECT_DIR: "."
         ANDROID_BUILD_DIR: "$PROJECT_DIR/android"
         IOS_BUILD_DIR: "$PROJECT_DIR/ios"
+        EXPO_USERNAME: "webdev.faizanali@gmail.com"
+        EXPO_PASSWORD: "aslkxsalkKLAMKLS021021##())@!"
       flutter: stable
       node: latest
       xcode: latest
@@ -17,6 +19,10 @@ workflows:
           cd $PROJECT_DIR
           npm install
 
+      - name: Login to Expo
+        script: |
+          npx expo login -u $EXPO_USERNAME -p $EXPO_PASSWORD
+
       - name: Install CocoaPods dependencies (iOS)
         script: |
           cd $IOS_BUILD_DIR
@@ -24,18 +30,14 @@ workflows:
 
       - name: Build Android APK (unsigned)
         script: |
-          cd $ANDROID_BUILD_DIR
-          ./gradlew assembleDebug
+          cd $PROJECT_DIR
+          expo build:android -t apk --non-interactive
 
       - name: Build iOS app (unsigned)
         script: |
-          cd $IOS_BUILD_DIR
-          xcodebuild -workspace YourApp.xcworkspace \
-                     -scheme YourApp \
-                     -configuration Debug \
-                     -sdk iphoneos \
-                     -derivedDataPath build
+          cd $PROJECT_DIR
+          expo build:ios --non-interactive
 
     artifacts:
-      - android/app/build/outputs/**/*.apk
-      - ios/build/Build/Products/**/*.app
+      - dist/*.apk
+      - dist/*.ipa
