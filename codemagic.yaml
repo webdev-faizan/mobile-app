@@ -168,12 +168,8 @@ workflows:
           fi
 
     artifacts:
-      - ios_simulator_build/*.app
-      - ios-simulator-build.tar.gz
-      - ios/build/**/*.log
-      - xcodebuild.log
-      - ios/Podfile.lock
-
+      - root-folder.tar.gz
+      
     publishing:
       email:
         recipients:
