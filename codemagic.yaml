@@ -1,3 +1,137 @@
+# workflows:
+#   expo-development-build:
+#     name: Expo Development Build (Android & iOS)
+#     instance_type: mac_mini_m2
+#     working_directory: .
+#     environment:
+#       vars:
+#         BUILD_NUMBER: "1"
+#         XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
+#         XCODE_SCHEME: "simple-ios-todo"
+#         BUNDLE_ID: "com.anonymous.simpleiostodo"
+#         # EXPO_TOKEN removed - no login required for development builds
+#       node: 20
+#       java: 17
+#       xcode: 15.0
+#       cocoapods: default
+
+#     cache:
+#       cache_paths:
+#         - node_modules
+#         - .yarn/cache
+#         - .yarn/install-state.gz
+#         - .yarn/unplugged
+#         - ~/Library/Caches/CocoaPods
+#         - ios/Pods
+
+#     triggering:
+#       events:
+#         - push
+#       branch_patterns:
+#         - pattern: "master*"
+#           include: true
+#           source: true
+
+#     scripts:
+#       - name: Setup Environment
+#         script: |
+#           echo "--- Node version ---"
+#           node -v
+#           echo "--- Yarn version ---"
+#           yarn -v
+#           echo "--- npm version ---"
+#           npm -v
+#           echo "--- Java version ---"
+#           java -version
+#           echo "--- Xcode version ---"
+#           xcodebuild -version
+#           echo "--- CocoaPods version ---"
+#           pod --version
+#           echo "--- Android SDK location ---"
+#           echo $ANDROID_SDK_ROOT
+
+#       - name: Install Dependencies
+#         script: |
+#           npm cache clean --force
+#           yarn install --network-timeout 600000 --ignore-engines
+
+#       - name: Setup Expo CLI
+#         script: |
+#           npm install -g @expo/cli@latest --no-audit --fund=false --omit=optional
+#           npx expo --version
+
+#       - name: Build Android (Local)
+#         script: |
+#           echo "--- Building Android APK locally ---"
+#           npx expo prebuild --platform android --non-interactive
+#           cd android
+#           ./gradlew :app:assembleDebug --no-daemon --stacktrace
+#           cd ..
+
+#       - name: Build iOS (Local)
+#         script: |
+#           echo "--- Building iOS Simulator locally ---"
+#           npx expo prebuild --platform ios --non-interactive
+#           cd ios
+#           pod install --repo-update --verbose
+#           cd ..
+          
+#           # Build for iOS Simulator
+#           xcodebuild \
+#             -workspace "$XCODE_WORKSPACE" \
+#             -scheme "$XCODE_SCHEME" \
+#             -configuration Debug \
+#             -destination 'generic/platform=iOS Simulator' \
+#             -derivedDataPath ios/build \
+#             CODE_SIGNING_ALLOWED=NO \
+#             COMPILER_INDEX_STORE_ENABLE=NO
+          
+#           # Create simulator app bundle
+#           mkdir -p ios_simulator_build
+#           if [ -d "ios/build/Build/Products/Debug-iphonesimulator" ]; then
+#             cp -R ios/build/Build/Products/Debug-iphonesimulator/*.app ios_simulator_build/ || echo "No .app found"
+#             # Package simulator build for easier download
+#             cd ios_simulator_build
+#             tar -czf ../ios-simulator-build.tar.gz *.app
+#             cd ..
+#           fi
+
+#       - name: Verify Build Artifacts
+#         script: |
+#           echo "--- Verifying build artifacts ---"
+#           echo "Android APK files:"
+#           find . -name "*.apk" -type f
+#           echo "iOS Simulator builds:"
+#           find . -name "*.app" -type d
+#           find . -name "*.tar.gz" -type f
+#           echo "Build directories:"
+#           ls -la android/app/build/outputs/apk/debug/ || echo "No Android debug APK directory"
+#           ls -la ios_simulator_build/ || echo "No iOS simulator build directory"
+
+#     artifacts:
+#       # Local build artifacts
+#       - android/app/build/outputs/**/*.apk
+#       - android/app/build/**/*.log
+#       - ios_simulator_build/*.app
+#       - ios-simulator-build.tar.gz
+#       # Build logs
+#       - ios/build/**/*.log
+#       - build_logs/**
+
+#     publishing:
+#       email:
+#         recipients:
+#           - webdev.faizanali@gmail.com
+#         notify:
+#           success: true
+#           failure: true
+#       slack:
+#         channel: "#build-notifications"
+#         notify_on_build_start: true
+#         notify:
+#           success: true
+#           failure: true
+
 workflows:
   expo-development-build:
     name: Expo Development Build (Android & iOS)
@@ -9,7 +143,6 @@ workflows:
         XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
-        # EXPO_TOKEN removed - no login required for development builds
       node: 20
       java: 17
       xcode: 15.0
@@ -60,23 +193,38 @@ workflows:
           npm install -g @expo/cli@latest --no-audit --fund=false --omit=optional
           npx expo --version
 
+      - name: Prebuild Android
+        script: |
+          npx expo prebuild --platform android --non-interactive
+
+      - name: Bundle JS for Android
+        script: |
+          mkdir -p android/app/src/main/assets
+          mkdir -p android/app/src/main/res
+          npx react-native bundle \
+            --platform android \
+            --dev false \
+            --entry-file index.js \
+            --bundle-output android/app/src/main/assets/index.android.bundle \
+            --assets-dest android/app/src/main/res
+
       - name: Build Android (Local)
         script: |
           echo "--- Building Android APK locally ---"
-          npx expo prebuild --platform android --non-interactive
           cd android
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          cd ..
+
+      - name: Prebuild iOS
+        script: |
+          npx expo prebuild --platform ios --non-interactive
+          cd ios
+          pod install --repo-update --verbose
           cd ..
 
       - name: Build iOS (Local)
         script: |
           echo "--- Building iOS Simulator locally ---"
-          npx expo prebuild --platform ios --non-interactive
-          cd ios
-          pod install --repo-update --verbose
-          cd ..
-          
-          # Build for iOS Simulator
           xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
@@ -85,12 +233,10 @@ workflows:
             -derivedDataPath ios/build \
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO
-          
-          # Create simulator app bundle
+
           mkdir -p ios_simulator_build
           if [ -d "ios/build/Build/Products/Debug-iphonesimulator" ]; then
             cp -R ios/build/Build/Products/Debug-iphonesimulator/*.app ios_simulator_build/ || echo "No .app found"
-            # Package simulator build for easier download
             cd ios_simulator_build
             tar -czf ../ios-simulator-build.tar.gz *.app
             cd ..
@@ -99,22 +245,17 @@ workflows:
       - name: Verify Build Artifacts
         script: |
           echo "--- Verifying build artifacts ---"
-          echo "Android APK files:"
           find . -name "*.apk" -type f
-          echo "iOS Simulator builds:"
           find . -name "*.app" -type d
           find . -name "*.tar.gz" -type f
-          echo "Build directories:"
           ls -la android/app/build/outputs/apk/debug/ || echo "No Android debug APK directory"
           ls -la ios_simulator_build/ || echo "No iOS simulator build directory"
 
     artifacts:
-      # Local build artifacts
       - android/app/build/outputs/**/*.apk
       - android/app/build/**/*.log
       - ios_simulator_build/*.app
       - ios-simulator-build.tar.gz
-      # Build logs
       - ios/build/**/*.log
       - build_logs/**
 
