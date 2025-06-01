@@ -34,8 +34,6 @@ workflows:
           echo "Xcode version: $(xcodebuild -version)"
           echo "Ruby version: $(ruby -v)"
           echo "CocoaPods version: $(pod --version)"
-          echo "--- Installing jq for JSON parsing ---"
-          brew install jq
 
       - name: Install Dependencies
         script: |
@@ -62,44 +60,29 @@ workflows:
           echo "--- Prebuild contents verification ---"
           ls -la ios/
 
-      - name: Build iOS Development Archive
+      - name: Build iOS App
         script: |
-          echo "--- Building iOS Development Archive ---"
+          echo "--- Building iOS App ---"
           cd ios
 
-          # Detect project/workspace
-          WORKSPACE=$(find . -maxdepth 1 -name '*.xcworkspace' -print -quit)
-          PROJECT=$(find . -maxdepth 1 -name '*.xcodeproj' -print -quit)
+          # Find the first workspace or project
+          XCODE_PROJ=$(find . -maxdepth 1 \( -name '*.xcworkspace' -o -name '*.xcodeproj' \) -print -quit)
 
-          if [ -n "$WORKSPACE" ]; then
-            echo "Found workspace: $WORKSPACE"
-            SCHEME=$(xcodebuild -workspace "$WORKSPACE" -list -json | jq -r '.workspace.schemes[0]')
-            echo "Using scheme: $SCHEME"
-            
-            xcodebuild -workspace "$WORKSPACE" \
-              -scheme "$SCHEME" \
-              -configuration Debug \
-              -sdk iphonesimulator \
-              -derivedDataPath build \
-              clean build
-            
-          elif [ -n "$PROJECT" ]; then
-            echo "Found project: $PROJECT"
-            SCHEME=$(xcodebuild -project "$PROJECT" -list -json | jq -r '.project.schemes[0]')
-            echo "Using scheme: $SCHEME"
-            
-            xcodebuild -project "$PROJECT" \
-              -scheme "$SCHEME" \
-              -configuration Debug \
-              -sdk iphonesimulator \
-              -derivedDataPath build \
-              clean build
-            
-          else
-            echo "❌ Error: No .xcworkspace or .xcodeproj found in ios directory!"
+          if [ -z "$XCODE_PROJ" ]; then
+            echo "❌ Error: No Xcode project found!"
             ls -la
             exit 1
           fi
+
+          echo "Found Xcode project: $XCODE_PROJ"
+
+          # Build without specifying scheme
+          xcodebuild \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            clean build
 
           echo "--- Build products ---"
           find build -type d -name "*.app" -exec du -sh {} \;
@@ -107,8 +90,8 @@ workflows:
           cd ..
 
     artifacts:
-      - ios/build/**/*.xcarchive
       - ios/build/**/*.app
+      - ios/build/**/*.dSYM
       - ios/build/**/*.log
 
     publishing:
