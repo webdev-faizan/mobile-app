@@ -12,8 +12,43 @@ workflows:
       node: 20
       xcode: 15.1
       cocoapods: default
-      cli:
-        version: latest   # <-- FIXED: Moved inside environment section (was causing validation error)
+    cli:
+      version: latest
+      build:
+       ios:
+    image: macos-latest
+    shell: bash
+    env:
+      NODE_OPTIONS: --max_old_space_size=4096
+
+    prebuild:
+      - echo "--- Running expo prebuild for iOS ---"
+      - CI=1 npx expo prebuild --platform ios
+
+    postinstall:
+      - echo "--- Cleaning old CocoaPods ---"
+      - cd ios
+      - rm -rf Pods Podfile.lock
+      - pod deintegrate || true
+      - echo "--- Installing CocoaPods with arch workaround ---"
+      - arch -x86_64 pod install --repo-update
+
+    cache:
+      cache_paths:
+        - ~/Library/Caches/CocoaPods
+        - ios/Pods
+        - node_modules
+        - .yarn/cache
+        - .yarn/install-state.gz
+        - .yarn/unplugged
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: "master*"
+          include: true
+          source: true
 
     scripts:
       - name: Setup Environment
@@ -59,14 +94,9 @@ workflows:
 
           echo "--- Ensuring expo is installed ---"
           yarn add expo
-          
-          echo "--- Installing Pods ---"
-          cd ios
-          # FIXED: Corrected indentation - this was incorrectly treated as a script line before
+          # Fixed indentation here, this was incorrectly treated as a script line before
           arch -x86_64 pod install --repo-update
-          cd ..
 
-      # Alternative Pod installation method (commented out)
       # - name: Install Pods
       #   script: |
       #     echo "--- Removing ios/Pods and node_modules folders ---"
@@ -105,52 +135,33 @@ workflows:
           echo "--- Pods directory contents ---"
           ls -la ios/Pods/
 
-      # Commented out build steps - uncomment and configure as needed
-      # - name: Build Development Version
-      #   script: |
-      #     echo "--- Building Development Version ---"
-      #     set -o pipefail && xcodebuild \
-      #       -workspace "$XCODE_WORKSPACE" \
-      #       -scheme "$XCODE_SCHEME" \
-      #       -configuration Debug \
-      #       -destination 'generic/platform=iOS' \
-      #       -quiet \
-      #       CODE_SIGNING_ALLOWED=NO \
-      #       COMPILER_INDEX_STORE_ENABLE=NO \
-      #       | xcpretty
+    #   - name: Build Development Version
+    #     script: |
+    #       echo "--- Building Development Version ---"
+    #       set -o pipefail && xcodebuild \
+    #         -workspace "$XCODE_WORKSPACE" \
+    #         -scheme "$XCODE_SCHEME" \
+    #         -configuration Debug \
+    #         -destination 'generic/platform=iOS' \
+    #         -quiet \
+    #         CODE_SIGNING_ALLOWED=NO \
+    #         COMPILER_INDEX_STORE_ENABLE=NO \
+    #         | xcpretty
 
-      #     # Alternative approach if the above fails
-      #     echo "--- Fallback: Detailed build logs ---"
-      #     xcodebuild \
-      #       -workspace "$XCODE_WORKSPACE" \
-      #       -scheme "$XCODE_SCHEME" \
-      #       -configuration Debug \
-      #       -destination 'generic/platform=iOS' \
-      #       CODE_SIGNING_ALLOWED=NO \
-      #       | tee xcodebuild.log
+    #       # Alternative approach if the above fails
+    #       echo "--- Fallback: Detailed build logs ---"
+    #       xcodebuild \
+    #         -workspace "$XCODE_WORKSPACE" \
+    #         -scheme "$XCODE_SCHEME" \
+    #         -configuration Debug \
+    #         -destination 'generic/platform=iOS' \
+    #         CODE_SIGNING_ALLOWED=NO \
+    #         | tee xcodebuild.log
 
-      #     # Save the full build logs as artifact
-      #     mkdir -p build_logs
-      #     mv xcodebuild.log build_logs/
+    #       # Save the full build logs as artifact
+    #       mkdir -p build_logs
+    #       mv xcodebuild.log build_logs/
 
-    cache:
-      cache_paths:
-        - ~/Library/Caches/CocoaPods
-        - ios/Pods
-        - node_modules
-        - .yarn/cache
-        - .yarn/install-state.gz
-        - .yarn/unplugged
-
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: "master*"
-          include: true
-          source: true
-
-    # Commented out artifacts - uncomment when you have build steps
     # artifacts:
     #   - build/ios/ipa/*.ipa
     #   - /tmp/xcodebuild_logs/*.log
@@ -158,7 +169,6 @@ workflows:
     #   - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
     #   - ios/build/**/*.log
 
-    # Commented out publishing - configure as needed
     # publishing:
     #   email:
     #     recipients:
