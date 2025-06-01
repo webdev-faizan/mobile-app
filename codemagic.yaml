@@ -74,7 +74,7 @@ workflows:
 
           echo "--- Ensuring expo is installed ---"
           yarn add expo
-          - arch -x86_64 pod install --repo-update
+          # - arch -x86_64 pod install --repo-update
 
 
 
