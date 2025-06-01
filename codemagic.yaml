@@ -49,9 +49,9 @@ workflows:
       - name: Make bash script executable
         script: |
           echo "--- Making bash scripts executable ---"
-          chmod +x ./*.bash
-          chmod +x ./build-ios.sh
-          ls -la *.bash
+          chmod +x ./.bash
+          # chmod +x ./build-ios.sh
+          # ls -la *.bash
 
       - name: Run custom bash script
         script: |
