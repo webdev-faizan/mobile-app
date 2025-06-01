@@ -65,6 +65,18 @@ workflows:
           echo "--- Prebuild contents verification ---"
           ls -la ios/
 
+      - name: Verify Prebuild Output
+        script: |
+          echo "--- iOS directory contents ---"
+          ls -la ios/
+          echo "--- Checking for Xcode projects ---"
+          find ios -name "*.xcworkspace" -o -name "*.xcodeproj"
+          # Update XCODE_WORKSPACE if different name is found
+          if [ -f "ios/SimpleTodo.xcworkspace" ]; then
+            export XCODE_WORKSPACE="ios/SimpleTodo.xcworkspace"
+            export XCODE_SCHEME="SimpleTodo"
+          fi
+
       - name: Install CocoaPods
         script: |
           echo "--- Installing Pods ---"
@@ -73,6 +85,15 @@ workflows:
           cd ..
           echo "--- Pods directory contents ---"
           ls -la ios/Pods/
+
+      - name: Debug Before Build
+        script: |
+          echo "--- Current directory ---"
+          pwd
+          echo "--- Checking for workspace file ---"
+          ls -la "$XCODE_WORKSPACE" || true
+          echo "--- Xcode projects list ---"
+          find . -name "*.xcworkspace" -o -name "*.xcodeproj"
 
       - name: Build Development Version
         script: |
@@ -87,25 +108,33 @@ workflows:
             COMPILER_INDEX_STORE_ENABLE=NO \
             | xcpretty
 
-          # Alternative approach if the above fails
-          echo "--- Fallback: Detailed build logs ---"
-          xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            | tee xcodebuild.log
-
-          # Save the full build logs as artifact
-          mkdir -p build_logs
-          mv xcodebuild.log build_logs/
+          # Capture build status
+          BUILD_STATUS=$?
+          
+          if [ $BUILD_STATUS -ne 0 ]; then
+            echo "--- Fallback: Detailed build logs ---"
+            xcodebuild \
+              -workspace "$XCODE_WORKSPACE" \
+              -scheme "$XCODE_SCHEME" \
+              -configuration Debug \
+              -destination 'generic/platform=iOS' \
+              CODE_SIGNING_ALLOWED=NO \
+              | tee xcodebuild.log
+            
+            # Save the full build logs as artifact
+            mkdir -p build_logs
+            mv xcodebuild.log build_logs/
+            
+            exit $BUILD_STATUS
+          fi
 
     artifacts:
-     - build/ios/ipa/*.ipa
-     - /tmp/xcodebuild_logs/*.log
-     - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
-     - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+      - build/ios/ipa/*.ipa
+      - build_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+      - ios/*.xcworkspace
+      - ios/*.xcodeproj
 
     publishing:
       email:
