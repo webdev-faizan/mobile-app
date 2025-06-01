@@ -70,8 +70,8 @@ workflows:
         script: |
           echo "--- Building iOS Development Archive ---"
           cd ios
-          xcodebuild -workspace YourProjectName.xcworkspace \
-            -scheme YourProjectName \
+          xcodebuild -workspace simple-ios-todo.xcodeproj \
+            -scheme simple-ios-todo \
             -configuration Debug \
             -sdk iphonesimulator \
             -derivedDataPath build \
