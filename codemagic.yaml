@@ -58,12 +58,12 @@ workflows:
           echo "--- EAS CLI version ---"
           npx eas-cli --version
 
-    #   - name: Expo Prebuild
-    #     script: |
-    #       echo "--- Generating iOS Native Code ---"
-    #       npx expo prebuild --platform ios --non-interactive
-    #       echo "--- Prebuild contents verification ---"
-    #       ls -la ios/
+      - name: Expo Prebuild
+        script: |
+          echo "--- Generating iOS Native Code ---"
+          npx expo prebuild --platform ios --non-interactive
+          echo "--- Prebuild contents verification ---"
+          ls -la ios/
 
     #   - name: Install CocoaPods
     #     script: |
@@ -108,9 +108,9 @@ workflows:
     #   - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
     #   - ios/build/**/*.log
 
-    publishing:
-      email:
-        recipients:
-          - webdev.faizanali@gmail.com
-      slack:
-        channel: "#build-notifications"
+    # publishing:
+    #   email:
+    #     recipients:
+    #       - webdev.faizanali@gmail.com
+    #   slack:
+    #     channel: "#build-notifications"
