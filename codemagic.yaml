@@ -5,8 +5,8 @@ workflows:
     environment:
       vars:
         PROJECT_DIR: "."
-        ANDROID_BUILD_DIR: "$PROJECT_DIR/android"
-        IOS_BUILD_DIR: "$PROJECT_DIR/ios"
+        ANDROID_BUILD_DIR: "./android"
+        IOS_BUILD_DIR: "./ios"
         EXPO_USERNAME: "webdev.faizanali@gmail.com"
         EXPO_PASSWORD: "aslkxsalkKLAMKLS021021##())@!"
       flutter: stable
@@ -21,9 +21,7 @@ workflows:
 
       - name: Login to Expo
         script: |
-          npx expo login -u $EXPO_USERNAME -p $EXPO_PASSWORD
-
-      # Removed CocoaPods install step because ios folder / Podfile not found
+          npx expo login -u "$EXPO_USERNAME" -p "$EXPO_PASSWORD"
 
       - name: Build Android APK (unsigned)
         script: |
