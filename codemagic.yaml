@@ -1,7 +1,7 @@
 workflows:
   expo-ios-development:
     name: Expo iOS Development Build
-    instance_type: mac_mini_2018
+    instance_type: mac_mini_m1
     working_directory: .
     environment:
       vars:
