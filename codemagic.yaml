@@ -11,7 +11,7 @@ workflows:
         BUILD_NUMBER: "1"
       node: 20
       xcode: 15.1
-      cocoapods: default
+      cocoapods: 1.14.0
 
     cache:
       cache_paths:
@@ -43,8 +43,8 @@ workflows:
           npm -v
           echo "--- Xcode version ---"
           xcodebuild -version
-          echo "--- CocoaPods version ---"
-          pod --version
+          echo "--- Ruby version ---"
+          ruby -v
 
       - name: Setup Xcode and CocoaPods
         script: |
@@ -52,27 +52,21 @@ workflows:
           sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           echo "--- Verifying xcode-select path ---"
           xcode-select -p
-          echo "--- Installing CocoaPods gem ---"
-          sudo gem install cocoapods
+          echo "--- Installing specific CocoaPods version ---"
+          sudo gem install cocoapods -v 1.14.0
+          sudo gem install ffi
           echo "--- Verifying CocoaPods version ---"
           pod --version
       
       - name: Make bash script executable
         script: |
           echo "--- Making bash scripts executable ---"
-          chmod +x ./.bash
-          # chmod +x ./build-ios.sh
-          # ls -la *.bash
-
-      - name: Run custom bash script
-        script: |
-          echo "--- Running custom bash script ---"
-          # ./.bash
+          chmod +x ./.bash || true
 
       - name: Clean Workspace
         script: |
           echo "--- Cleaning previous builds ---"
-          rm -rf ios/build ios/Pods
+          rm -rf ios/build ios/Pods ~/Library/Developer/Xcode/DerivedData/*
 
       - name: Install JS Dependencies
         script: |
@@ -81,7 +75,132 @@ workflows:
           echo "--- Installing Yarn dependencies ---"
           yarn install --network-timeout 600000 --ignore-engines
           echo "--- Checking expo-cli ---"
-          yarn global add expo-cli
+          yarn global add expo-cli@latest
+
+      - name: Expo Prebuild
+        script: |
+          echo "--- Generating iOS Native Code ---"
+          CI=1 npx expo prebuild --platform ios --clean
+          echo "--- Verifying generated files ---"
+          ls -la ios/
+          echo "--- Updated Podfile content ---"
+          cat ios/Podfile
+
+      - name: Install Pods
+        script: |
+          echo "--- Installing Pods ---"
+          cd ios
+          pod install --repo-update --verbose
+          cd ..
+          echo "--- Pods directory contents ---"
+          ls -la ios/Pods/
+
+      - name: Build Development Version
+        script: |
+          echo "--- Building Development Version ---"
+          set -o pipefail && xcodebuild \
+            -workspace "$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -quiet \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            | xcpretty
+
+      - name: Verify Build Artifacts
+        script: |
+          echo "--- Checking build outputs ---"
+          find ~/Library/Developer/Xcode/DerivedData -name "*.app" -print
+          find ~/Library/Developer/Xcode/DerivedData -name "*.dSYM" -print
+
+    artifacts:
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      email:
+        recipients:
+          - webdev.faizanali@gmail.com
+      slack:
+        channel: "#build-notifications"workflows:
+  expo-ios-development:
+    name: Expo iOS Development Build
+    instance_type: mac_mini_m2
+    working_directory: .
+    environment:
+      vars:
+        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
+        XCODE_SCHEME: "simple-ios-todo"
+        BUNDLE_ID: "com.anonymous.simpleiostodo"
+        BUILD_NUMBER: "1"
+      node: 20
+      xcode: 15.1
+      cocoapods: 1.14.0
+
+    cache:
+      cache_paths:
+        - ~/.expo
+        - ~/.cache/expo
+        - ~/Library/Caches/CocoaPods
+        - ios/Pods
+        - node_modules
+        - .yarn/cache
+        - .yarn/install-state.gz
+        - .yarn/unplugged
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: "master*"
+          include: true
+          source: true
+    
+    scripts:
+      - name: Setup Environment
+        script: |
+          echo "--- Node version ---"
+          node -v
+          echo "--- Yarn version ---"
+          yarn -v
+          echo "--- npm version ---"
+          npm -v
+          echo "--- Xcode version ---"
+          xcodebuild -version
+          echo "--- Ruby version ---"
+          ruby -v
+
+      - name: Setup Xcode and CocoaPods
+        script: |
+          echo "--- Selecting full Xcode developer directory ---"
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          echo "--- Verifying xcode-select path ---"
+          xcode-select -p
+          echo "--- Installing specific CocoaPods version ---"
+          sudo gem install cocoapods -v 1.14.0
+          sudo gem install ffi
+          echo "--- Verifying CocoaPods version ---"
+          pod --version
+      
+      - name: Make bash script executable
+        script: |
+          echo "--- Making bash scripts executable ---"
+          chmod +x ./.bash || true
+
+      - name: Clean Workspace
+        script: |
+          echo "--- Cleaning previous builds ---"
+          rm -rf ios/build ios/Pods ~/Library/Developer/Xcode/DerivedData/*
+
+      - name: Install JS Dependencies
+        script: |
+          echo "--- Cleaning npm cache ---"
+          npm cache clean --force
+          echo "--- Installing Yarn dependencies ---"
+          yarn install --network-timeout 600000 --ignore-engines
+          echo "--- Checking expo-cli ---"
+          yarn global add expo-cli@latest
 
       - name: Expo Prebuild
         script: |
