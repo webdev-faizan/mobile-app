@@ -7,7 +7,7 @@ workflows:
       vars:
         BUILD_NUMBER: "1"
       node: 20
-      java: 17  # Optional for iOS, but kept for consistency
+      java: 17
 
     cache:
       cache_paths:
@@ -15,7 +15,8 @@ workflows:
         - .yarn/cache
         - .yarn/install-state.gz
         - .yarn/unplugged
-        - ios/Pods  # Added Pods cache
+        - ios/Pods
+        - ios/Podfile.lock
 
     triggering:
       events:
@@ -41,52 +42,66 @@ workflows:
           echo "--- CocoaPods version ---"
           pod --version
 
+      - name: Clean Pods Installation
+        script: |
+          echo "--- Cleaning previous Pods installation ---"
+          cd ios
+          rm -rf Pods Podfile.lock simpleiostodo.xcworkspace
+          cd ..
+
       - name: Install Dependencies
         script: |
-          echo "--- Cleaning npm cache ---"
-          npm cache clean --force
           echo "--- Installing Yarn dependencies ---"
           yarn install --network-timeout 600000 --ignore-engines
-          echo "--- Installing CocoaPods dependencies ---"
+          echo "--- Installing CocoaPods ---"
           cd ios
-          pod install --repo-update
-          echo "--- Verifying workspace generation ---"
-          if [ ! -d "../ios/simpleiostodo.xcworkspace" ]; then
-            echo "Using xcodeproj (no workspace generated)"
+          pod install --repo-update --clean-install
+          cd ..
+
+      - name: Verify Pods Installation
+        script: |
+          echo "--- Verifying Pods files ---"
+          cd ios
+          if [ ! -f "Pods/Target Support Files/Pods-simpleiostodo/Pods-simpleiostodo.debug.xcconfig" ]; then
+            echo "Pods configuration missing, reinstalling..."
+            pod install --clean-install
           fi
           cd ..
 
       - name: Setup EAS CLI
         script: |
-          echo "--- Installing EAS CLI ---"
           npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
-          echo "--- EAS CLI version ---"
           npx eas-cli --version
 
-      - name: Expo Prebuild for iOS
+      - name: Expo Prebuild
         script: |
-          echo "--- Generating iOS Native Code ---"
           npx expo prebuild --platform ios --non-interactive
-          echo "--- Prebuild contents verification ---"
-          ls -la ios/
-
-      - name: Build iOS Development Archive
-        script: |
-          echo "--- Building iOS Development Archive ---"
+          echo "--- Fixing React Native Script Phases ---"
           cd ios
-          xcodebuild -project simpleiostodo.xcodeproj \
+          # Fix for "Bundle React Native code and images" warning
+          sed -i '' 's/Based on dependency analysis/AlwaysOutOfDate/g' simpleiostodo.xcodeproj/project.pbxproj
+          cd ..
+
+      - name: Build iOS
+        script: |
+          echo "--- Building iOS App ---"
+          cd ios
+          xcodebuild \
+            -project simpleiostodo.xcodeproj \
             -scheme simpleiostodo \
             -configuration Debug \
             -sdk iphonesimulator \
             -derivedDataPath build \
+            -UseModernBuildSystem=YES \
             clean build | tee xcodebuild.log
           cd ..
-          echo "--- iOS Build Complete ---"
+          echo "--- Build Complete ---"
 
     artifacts:
       - ios/build/**/*
       - ios/xcodebuild.log
-      - ios/Podfile.lock  # Added for dependency tracking
+      - ios/Podfile.lock
+      - ios/Pods/Manifest.lock
 
     publishing:
       email:
