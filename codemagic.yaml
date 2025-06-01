@@ -13,7 +13,7 @@ workflows:
       xcode: 15.1
       cocoapods: default
     cli:
-      version: latest
+      version: latest   # <-- Correct indentation: cli expects a dictionary, so version must be a key here
 
 build:
   ios:
@@ -95,7 +95,8 @@ build:
 
           echo "--- Ensuring expo is installed ---"
           yarn add expo
-          - arch -x86_64 pod install --repo-update
+          # Fixed indentation here, this was incorrectly treated as a script line before
+          arch -x86_64 pod install --repo-update
 
       # - name: Install Pods
       #   script: |
@@ -113,11 +114,11 @@ build:
           echo "--- Prebuild contents verification ---"
           ls -la ios/
           if [ -d "ios" ]; then
-          echo "✅ iOS folder exists"
-           ls -la ios/
-            else
-             echo "❌ iOS folder does not exist"
-              fi
+            echo "✅ iOS folder exists"
+            ls -la ios/
+          else
+            echo "❌ iOS folder does not exist"
+          fi
 
       - name: Setup EAS CLI
         script: |
