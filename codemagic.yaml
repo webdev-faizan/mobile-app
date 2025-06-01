@@ -1,42 +1,121 @@
 workflows:
-  ios-native-workflow:
-    name: iOS Native
-    max_build_duration: 120
-    instance_type: mac_mini_m2
-    # integrations:
-    #   app_store_connect: codemagic
+  expo-development-build:
+    name: Expo Development Build (iOS + Android)
+    instance_type: mac_mini_m2  # Required for iOS builds
+    working_directory: .
     environment:
-      # Removed ios_signing section since you want to build without signing
-      vars:
-        BUNDLE_ID: com.anonymous.simpleiostodo
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
-        XCODE_SCHEME: "simple-ios-todo"
-      xcode: latest
+      node: 20
+      java: 17
+      xcode: 15.0
       cocoapods: default
+      ANDROID_HOME: /Users/expo/Library/Android/sdk
+
+    cache:
+      cache_paths:
+        - node_modules
+        - .yarn/cache
+        - ios/Pods
+        - ~/.gradle/caches
+        - ~/Library/Caches/CocoaPods
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: "master*"
+          include: true
+          source: true
+
     scripts:
-      - name: Install CocoaPods dependencies
-        script: | 
-          pod install
-      - name: Build ipa for distribution
-        script: | 
-          xcode-project build-ipa \
-            --workspace "$CM_BUILD_DIR/$XCODE_WORKSPACE" \
-            --scheme "$XCODE_SCHEME"
+      # ===== COMMON SETUP =====
+      - name: Setup Environment
+        script: |
+          echo "--- System Info ---"
+          echo "Node: $(node -v)"
+          echo "Yarn: $(yarn -v)"
+          echo "Java: $(java -version 2>&1 | head -n 1)"
+          echo "Xcode: $(xcodebuild -version | head -n 1)"
+          echo "CocoaPods: $(pod --version)"
+          
+          export NODE_OPTIONS=--max_old_space_size=4096
+          export CI=1
+
+      - name: Install Dependencies
+        script: |
+          echo "--- Installing dependencies ---"
+          yarn install --frozen-lockfile
+          npm install -g @expo/cli@latest
+
+      # ===== iOS BUILD =====
+      - name: iOS Prebuild
+        script: |
+          echo "--- Generating iOS native files ---"
+          npx expo prebuild --platform ios --clean
+
+      - name: Install CocoaPods
+        script: |
+          echo "--- Installing pods ---"
+          cd ios
+          pod install --repo-update
+          cd ..
+
+      - name: Build iOS Simulator
+        script: |
+          echo "--- Building iOS app ---"
+          xcodebuild \
+            -workspace ios/*.xcworkspace \
+            -scheme * \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee ios-xcodebuild.log
+
+      # ===== ANDROID BUILD =====
+      - name: Android Prebuild
+        script: |
+          echo "--- Generating Android native files ---"
+          npx expo prebuild --platform android --clean
+
+      - name: Build Android
+        script: |
+          echo "--- Building Android app ---"
+          cd android
+          ./gradlew assembleDebug --no-daemon --max-workers=2
+          cd ..
+
+      # ===== ARTIFACTS =====
+      - name: Package Artifacts
+        script: |
+          # iOS Artifact
+          mkdir -p artifacts/ios
+          cp -R ios/build/Build/Products/Debug-iphonesimulator/*.app artifacts/ios/
+          tar -czf ios-build.tar.gz -C artifacts/ios .
+
+          # Android Artifact
+          mkdir -p artifacts/android
+          cp android/app/build/outputs/apk/debug/*.apk artifacts/android/
+          tar -czf android-build.tar.gz -C artifacts/android .
+
+          echo "--- Artifact Sizes ---"
+          du -sh artifacts/ios/*.app
+          du -sh artifacts/android/*.apk
+
     artifacts:
-      - build/ios/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
-    # publishing:
-    #   email:
-    #     recipients:
-    #       # - user_1@example.com
-    #       # - user_2@example.com
-    #     notify:
-    #       success: true
-    #       failure: false
-    #   app_store_connect:
-    #     auth: integration
-    #     # Disabled App Store submissions
-    #     submit_to_testflight: false
-    #     submit_to_app_store: false
+      # iOS
+      - artifacts/ios/*.app
+      - ios-build.tar.gz
+      - ios-xcodebuild.log
+      
+      # Android
+      - artifacts/android/*.apk
+      - android-build.tar.gz
+      - android/app/build/**/outputs/logs/*.log
+
+    publishing:
+      email:
+        recipients:
+          - webdev.faizanali@gmail.com
+        notify:
+          success: true
+          failure: true
