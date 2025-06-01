@@ -1,161 +1,121 @@
+
+
 workflows:
-  expo-ios-development:
-    name: Expo iOS Development Build
+
+  ios-native-workflow:
+
+    name: iOS Native
+
+    max_build_duration: 120
+
     instance_type: mac_mini_m2
-    working_directory: .
+
+    integrations:
+
+      app_store_connect: codemagic
+
     environment:
+
+      ios_signing:
+
+        # distribution_type: app_store
+
+        # bundle_identifier: com.anonymous.simpleiostodo
+
       vars:
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
-        XCODE_SCHEME: "simple-ios-todo"
-        BUNDLE_ID: "com.anonymous.simpleiostodo"
-        BUILD_NUMBER: "1"
-      node: 20
-      xcode: 15.1
+
+        BUNDLE_ID: com.anonymous.simpleiostodo
+
+        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace" # <-- Put the name of your Xcode workspace here
+
+        XCODE_SCHEME: "simple-ios-todo" # <-- Put the name of your Xcode scheme here
+
+        # APP_STORE_APPLE_ID: 1555555551
+
+      xcode: latest
+
       cocoapods: default
 
-    cache:
-      cache_paths:
-        - ~/Library/Caches/CocoaPods
-        - ios/Pods
-        - node_modules
-        - .yarn/cache
-        - .yarn/install-state.gz
-        - .yarn/unplugged
-
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: "master*"
-          include: true
-          source: true
-
     scripts:
-      - name: Setup Environment
-        script: |
-          echo "--- Node version ---"
-          node -v
-          echo "--- Yarn version ---"
-          yarn -v
-          echo "--- npm version ---"
-          npm -v
-          echo "--- Xcode version ---"
-          xcodebuild -version
-          echo "--- CocoaPods version ---"
-          pod --version
 
-      - name: Setup Xcode and CocoaPods
-        script: |
-          echo "--- Selecting full Xcode developer directory ---"
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-          echo "--- Verifying xcode-select path ---"
-          xcode-select -p
+      - name: Install CocoaPods dependencies
 
-          echo "--- Installing/Updating CocoaPods gem ---"
-          sudo gem install cocoapods
+        script: | 
 
-          # If you want to use Homebrew instead, comment above and uncomment below:
-          # echo "--- Uninstalling CocoaPods gem (if present) ---"
-          # sudo gem uninstall cocoapods || true
-          # echo "--- Installing CocoaPods via Homebrew ---"
-          # brew install cocoapods
-          # echo "--- Linking CocoaPods binaries (if needed) ---"
-          # brew link --overwrite cocoapods
+          pod install
 
-          echo "--- Verifying CocoaPods version ---"
-          pod --version
+      - name: Set up provisioning profiles settings on Xcode project
 
-      - name: Install Dependencies
-        script: |
-          echo "--- Cleaning npm cache ---"
-          npm cache clean --force
-          echo "--- Installing Yarn dependencies ---"
-          yarn install --network-timeout 600000 --ignore-engines
+        script: xcode-project use-profiles
 
-          echo "--- Ensuring expo is installed ---"
-          yarn add expo
-          # - arch -x86_64 pod install --repo-update
+      - name: Increment build number
 
+        # script: | 
 
+        #   cd $CM_BUILD_DIR
 
-      # - name: Install Pods
-      #   script: |
-      #     echo "--- Removing ios/Pods and node_modules folders ---"
-      #     rm -rf ios/Pods node_modules
-      #     echo "--- Installing Pods ---"
-      #     cd ios
-      #     pod install --repo-update --allow-root
-      #     cd ..
+        #   LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID")
 
-     
+        #   agvtool new-version -all $(($LATEST_BUILD_NUMBER + 1))
 
-      - name: Expo Prebuild
-        script: |
-          echo "--- Generating iOS Native Code ---"
-          CI=1 npx expo prebuild --platform ios
-          echo "--- Prebuild contents verification ---"
-          ls -la ios/
-          if [ -d "ios" ]; then
-          echo "✅ iOS folder exists"
-           ls -la ios/
-            else
-             echo "❌ iOS folder does not exist"
-              fi
+      - name: Build ipa for distribution
+
+        script: | 
+
+          xcode-project build-ipa \
+
+            --workspace "$CM_BUILD_DIR/$XCODE_WORKSPACE" \
+
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+
+      - build/ios/ipa/*.ipa
+
+      - /tmp/xcodebuild_logs/*.log
+
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+
+      email:
+
+        recipients:
+
+          # - user_1@example.com
+
+          # - user_2@example.com
+
+        notify:
+
+          success: true
+
+          failure: false
+
+      app_store_connect:
+
+        auth: integration
 
 
-      - name: Setup EAS CLI
-        script: |
-          echo "--- Installing EAS CLI ---"
-          npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
-          echo "--- EAS CLI version ---"
-          npx eas-cli --version      
 
-      - name: Install CocoaPods
-        script: |
-          echo "--- Installing Pods ---"
-          cd ios
-          pod install --repo-update --verbose
-          cd ..
-          echo "--- Pods directory contents ---"
-          ls -la ios/Pods/
+        # Configuration related to TestFlight (optional)
 
-    #   - name: Build Development Version
-    #     script: |
-    #       echo "--- Building Development Version ---"
-    #       set -o pipefail && xcodebuild \
-    #         -workspace "$XCODE_WORKSPACE" \
-    #         -scheme "$XCODE_SCHEME" \
-    #         -configuration Debug \
-    #         -destination 'generic/platform=iOS' \
-    #         -quiet \
-    #         CODE_SIGNING_ALLOWED=NO \
-    #         COMPILER_INDEX_STORE_ENABLE=NO \
-    #         | xcpretty
+        # Note: This action is performed during post-processing.
 
-    #       # Alternative approach if the above fails
-    #       echo "--- Fallback: Detailed build logs ---"
-    #       xcodebuild \
-    #         -workspace "$XCODE_WORKSPACE" \
-    #         -scheme "$XCODE_SCHEME" \
-    #         -configuration Debug \
-    #         -destination 'generic/platform=iOS' \
-    #         CODE_SIGNING_ALLOWED=NO \
-    #         | tee xcodebuild.log
+        submit_to_testflight: true
 
-    #       # Save the full build logs as artifact
-    #       mkdir -p build_logs
-    #       mv xcodebuild.log build_logs/
+        beta_groups: # Specify the names of beta tester groups that will get access to the build once it has passed beta review.
 
-    # artifacts:
-    #   - build/ios/ipa/*.ipa
-    #   - /tmp/xcodebuild_logs/*.log
-    #   - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
-    #   - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
-    #   - ios/build/**/*.log
+          # - group name 1
 
-    # publishing:
-    #   email:
-    #     recipients:
-    #       - webdev.faizanali@gmail.com
-    #   slack:
-    #     channel: "#build-notifications"
+          # - group name 2
+
+
+
+        # Configuration related to App Store (optional)
+
+        # Note: This action is performed during post-processing.
+
+        submit_to_app_store: false
