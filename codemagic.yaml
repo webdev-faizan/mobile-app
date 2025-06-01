@@ -58,55 +58,55 @@ workflows:
           echo "--- EAS CLI version ---"
           npx eas-cli --version
 
-      - name: Expo Prebuild
-        script: |
-          echo "--- Generating iOS Native Code ---"
-          npx expo prebuild --platform ios --non-interactive
-          echo "--- Prebuild contents verification ---"
-          ls -la ios/
+    #   - name: Expo Prebuild
+    #     script: |
+    #       echo "--- Generating iOS Native Code ---"
+    #       npx expo prebuild --platform ios --non-interactive
+    #       echo "--- Prebuild contents verification ---"
+    #       ls -la ios/
 
-      - name: Install CocoaPods
-        script: |
-          echo "--- Installing Pods ---"
-          cd ios
-          pod install --repo-update --verbose
-          cd ..
-          echo "--- Pods directory contents ---"
-          ls -la ios/Pods/
+    #   - name: Install CocoaPods
+    #     script: |
+    #       echo "--- Installing Pods ---"
+    #       cd ios
+    #       pod install --repo-update --verbose
+    #       cd ..
+    #       echo "--- Pods directory contents ---"
+    #       ls -la ios/Pods/
 
-      - name: Build Development Version
-        script: |
-          echo "--- Building Development Version ---"
-          set -o pipefail && xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            -quiet \
-            CODE_SIGNING_ALLOWED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            | xcpretty
+    #   - name: Build Development Version
+    #     script: |
+    #       echo "--- Building Development Version ---"
+    #       set -o pipefail && xcodebuild \
+    #         -workspace "$XCODE_WORKSPACE" \
+    #         -scheme "$XCODE_SCHEME" \
+    #         -configuration Debug \
+    #         -destination 'generic/platform=iOS' \
+    #         -quiet \
+    #         CODE_SIGNING_ALLOWED=NO \
+    #         COMPILER_INDEX_STORE_ENABLE=NO \
+    #         | xcpretty
 
-          # Alternative approach if the above fails
-          echo "--- Fallback: Detailed build logs ---"
-          xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            | tee xcodebuild.log
+    #       # Alternative approach if the above fails
+    #       echo "--- Fallback: Detailed build logs ---"
+    #       xcodebuild \
+    #         -workspace "$XCODE_WORKSPACE" \
+    #         -scheme "$XCODE_SCHEME" \
+    #         -configuration Debug \
+    #         -destination 'generic/platform=iOS' \
+    #         CODE_SIGNING_ALLOWED=NO \
+    #         | tee xcodebuild.log
 
-          # Save the full build logs as artifact
-          mkdir -p build_logs
-          mv xcodebuild.log build_logs/
+    #       # Save the full build logs as artifact
+    #       mkdir -p build_logs
+    #       mv xcodebuild.log build_logs/
 
-    artifacts:
-      - build/ios/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
-      - ios/build/**/*.log
+    # artifacts:
+    #   - build/ios/ipa/*.ipa
+    #   - /tmp/xcodebuild_logs/*.log
+    #   - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+    #   - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    #   - ios/build/**/*.log
 
     publishing:
       email:
