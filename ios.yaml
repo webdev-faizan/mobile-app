@@ -1,26 +1,22 @@
 workflows:
-  expo-ios-development:
-    name: Expo iOS Development Build
+  expo-development-build:
+    name: Expo Development Build (iOS only)
     instance_type: mac_mini_m2
     working_directory: .
     environment:
-      vars:
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
-        XCODE_SCHEME: "simple-ios-todo"
-        BUNDLE_ID: "com.anonymous.simpleiostodo"
-        BUILD_NUMBER: "1"
       node: 20
+      java: 17
       xcode: 15.0
       cocoapods: default
 
     cache:
       cache_paths:
-        - ~/Library/Caches/CocoaPods
-        - ios/Pods
         - node_modules
         - .yarn/cache
         - .yarn/install-state.gz
         - .yarn/unplugged
+        - ~/Library/Caches/CocoaPods
+        - ios/Pods
 
     triggering:
       events:
@@ -33,81 +29,210 @@ workflows:
     scripts:
       - name: Setup Environment
         script: |
-          echo "--- Node version ---"
-          node -v
-          echo "--- Yarn version ---"
-          yarn -v
-          echo "--- npm version ---"
-          npm -v
-          echo "--- Xcode version ---"
-          xcodebuild -version
-          echo "--- CocoaPods version ---"
-          pod --version
+          echo "--- System Info ---"
+          echo "Node version: $(node -v)"
+          echo "Yarn version: $(yarn -v)"
+          echo "npm version: $(npm -v)"
+          echo "Java version: $(java -version 2>&1 | head -n 1)"
+          echo "Xcode version: $(xcodebuild -version | head -n 1)"
+          echo "CocoaPods version: $(pod --version)"
+          echo "System architecture: $(uname -m)"
+          echo "Available memory: $(sysctl -n hw.memsize | awk '{print $0/1073741824" GB"}')"
+          
+          export NODE_OPTIONS=--max_old_space_size=4096
+          export LANG=en_US.UTF-8
+          export LC_ALL=en_US.UTF-8
+          export CI=1
+
+      - name: Clean Workspace
+        script: |
+          echo "--- Cleaning previous builds ---"
+          rm -rf ios/build
+          rm -rf ios_simulator_build
+          rm -f ios-simulator-build.tar.gz
+          rm -rf ios/
+          find . -name "*.log" -delete
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*
+          pod cache clean --all
+          rm -rf ~/Library/Caches/CocoaPods
 
       - name: Install Dependencies
         script: |
-          echo "--- Cleaning npm cache ---"
+          echo "--- Installing dependencies ---"
           npm cache clean --force
-          echo "--- Installing Yarn dependencies ---"
-          yarn install --network-timeout 600000 --ignore-engines
+          yarn install --network-timeout 600000 --ignore-engines --frozen-lockfile
+          yarn check --verify-tree || (echo "Dependency tree verification failed" && exit 1)
 
-      - name: Setup EAS CLI
+      - name: Setup Expo CLI
         script: |
-          echo "--- Installing EAS CLI ---"
-          npm install -g eas-cli@latest --no-audit --fund=false --omit=optional
-          echo "--- EAS CLI version ---"
-          npx eas-cli --version
+          echo "--- Setting up Expo CLI ---"
+          npm install -g @expo/cli@latest --no-audit --fund=false --omit=optional
+          npx expo --version
 
-      - name: Expo Prebuild
+      - name: Prebuild iOS Project
         script: |
-          echo "--- Generating iOS Native Code ---"
-          npx expo prebuild --platform ios --non-interactive
-          echo "--- Prebuild contents verification ---"
-          ls -la ios/
+          echo "--- Running expo prebuild ---"
+          # Removed --clear option here
+          npx expo prebuild --platform ios
+          
+          echo "--- Verifying prebuild files ---"
+          if [ ! -f "ios/simple-ios-todo.xcodeproj/project.pbxproj" ]; then
+            echo "Error: Xcode project not found at ios/simple-ios-todo.xcodeproj/project.pbxproj"
+            echo "Available files in ios directory:"
+            ls -la ios/ || echo "ios directory not found"
+            exit 1
+          fi
+          
+          if [ ! -f "ios/Podfile" ]; then
+            echo "Error: Podfile not found"
+            exit 1
+          fi
+          
+          echo "--- Prebuild verification completed successfully ---"
 
-      - name: Install CocoaPods
+      - name: Update CocoaPods Repository
         script: |
-          echo "--- Installing Pods ---"
+          echo "--- Updating CocoaPods repository ---"
+          pod repo update --verbose
+          pod cache clean --all
+
+      - name: Install CocoaPods with Retry Logic
+        script: |
+          echo "--- Installing pods with retry logic ---"
           cd ios
-          pod install --repo-update --verbose
+          
+          install_pods() {
+            local attempt=$1
+            echo "Attempt $attempt: Installing CocoaPods dependencies..."
+            case $attempt in
+              1)
+                pod install --repo-update --verbose
+                ;;
+              2)
+                pod cache clean --all
+                pod install --repo-update --verbose
+                ;;
+              3)
+                pod install --verbose
+                ;;
+              4)
+                if ! grep -q "platform :ios" Podfile; then
+                  echo "platform :ios, '12.4'" | cat - Podfile > temp && mv temp Podfile
+                fi
+                pod install --verbose
+                ;;
+              5)
+                pod deintegrate || true
+                pod install --repo-update --verbose
+                ;;
+            esac
+          }
+          
+          max_attempts=5
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            if install_pods $attempt; then
+              echo "Pod installation successful on attempt $attempt"
+              break
+            else
+              echo "Pod installation failed on attempt $attempt"
+              if [ $attempt -eq $max_attempts ]; then
+                echo "All pod installation attempts failed"
+                exit 1
+              fi
+              attempt=$((attempt + 1))
+              sleep 10
+            fi
+          done
           cd ..
-          echo "--- Pods directory contents ---"
-          ls -la ios/Pods/
+          
+          if [ ! -d "ios/Pods" ]; then
+            echo "Error: Pods directory not created"
+            ls -la ios/
+            exit 1
+          fi
+          
+          if [ ! -d "ios/simple-ios-todo.xcworkspace" ] && [ ! -f "ios/simple-ios-todo.xcworkspace" ]; then
+            echo "Warning: Workspace not found, checking for project file instead..."
+            if [ ! -f "ios/simple-ios-todo.xcodeproj/project.pbxproj" ]; then
+              echo "Error: Neither workspace nor project file found"
+              ls -la ios/
+              exit 1
+            else
+              echo "Project file found, continuing with .xcodeproj"
+            fi
+          fi
+          
+          echo "--- CocoaPods installation completed successfully ---"
 
-      - name: Build Development Version
+      - name: Build iOS Simulator
         script: |
-          echo "--- Building Development Version ---"
-          set -o pipefail && xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            -quiet \
-            CODE_SIGNING_ALLOWED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            | xcpretty
+          echo "--- Building for iOS Simulator ---"
+          set -o pipefail
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*
+          
+          if [ -d "ios/simple-ios-todo.xcworkspace" ] || [ -f "ios/simple-ios-todo.xcworkspace" ]; then
+            BUILD_TARGET="-workspace ios/simple-ios-todo.xcworkspace"
+            echo "Using workspace for build"
+          else
+            BUILD_TARGET="-project ios/simple-ios-todo.xcodeproj"
+            echo "Using project for build"
+          fi
+          
+          xcodebuild clean $BUILD_TARGET -scheme "simple-ios-todo" -configuration Debug
+          
+          echo "Starting build process..."
+          xcodebuild $BUILD_TARGET -scheme "simple-ios-todo" -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 14,OS=17.0' -derivedDataPath ios/build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" PROVISIONING_PROFILE="" COMPILER_INDEX_STORE_ENABLE=NO ONLY_ACTIVE_ARCH=YES -quiet | tee xcodebuild.log
+          
+          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+          echo "--- Xcodebuild exit code: $BUILD_EXIT_CODE ---"
+          
+          if [ $BUILD_EXIT_CODE -eq 0 ] && grep -q "BUILD SUCCEEDED" xcodebuild.log; then
+            echo "--- Build completed successfully ---"
+          else
+            echo "--- Build failed ---"
+            echo "--- Build errors ---"
+            grep -i "error:" xcodebuild.log | tail -10 || echo "No specific errors found"
+            echo "--- Build warnings ---"
+            grep -i "warning:" xcodebuild.log | tail -5 || echo "No warnings found"
+            echo "--- Last 50 lines of build log ---"
+            tail -50 xcodebuild.log
+            exit 1
+          fi
 
-          # Alternative approach if the above fails
-          echo "--- Fallback: Detailed build logs ---"
-          xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            | tee xcodebuild.log
+      - name: Package Artifacts
+        script: |
+          echo "--- Packaging build artifacts ---"
+          mkdir -p ios_simulator_build
+          APP_PATH=$(find ios/build -name "*.app" -type d -print -quit 2>/dev/null)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "Searching alternative locations..."
+            APP_PATH=$(find ios/build/Build/Products -name "*.app" -type d -print -quit 2>/dev/null)
+          fi
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "No app bundle found"
+            find ios/build -name "*.app" -type d -print
+            exit 1
+          fi
+          
+          echo "Found app bundle at: $APP_PATH"
+          cp -R "$APP_PATH" ios_simulator_build/
+          tar -czf ios-simulator-build.tar.gz -C ios_simulator_build .
+          
+          echo "--- Artifact sizes ---"
+          du -sh ios_simulator_build/*.app
+          du -sh ios-simulator-build.tar.gz
+          echo "--- Packaging completed successfully ---"
 
-          # Save the full build logs as artifact
-          mkdir -p build_logs
-          mv xcodebuild.log build_logs/
-
-    artifacts:
-      - build_logs/xcodebuild.log
-      - ios/build/**/*.log
-
-    publishing:
-      email:
-        recipients:
-          - webdev.faizanali@gmail.com
-      slack:
-        channel: "#build-notifications"
+      - name: Verify Build Output
+        script: |
+          echo "--- Build verification ---"
+          if [ ! -f "ios-simulator-build.tar.gz" ]; then
+            echo "Error: Tar archive not found"
+            ls -la . | grep -E "\.(tar\.gz|app|ipa)$" || echo "No build artifacts found"
+            exit 1
+          fi
+          echo "--- Build output verified successfully ---"
