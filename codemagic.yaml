@@ -6,6 +6,7 @@ workflows:
     environment:
       vars:
         BUILD_NUMBER: "1"
+        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
         XCODE_SCHEME: "simple-ios-todo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
         # EXPO_TOKEN removed - no login required for development builds
@@ -21,6 +22,7 @@ workflows:
         - .yarn/install-state.gz
         - .yarn/unplugged
         - ~/Library/Caches/CocoaPods
+        - ios/Pods
 
     triggering:
       events:
@@ -31,253 +33,90 @@ workflows:
           source: true
 
     scripts:
-      - name: Setup Environment & Debug Info
+      - name: Setup Environment
         script: |
-          echo "--- Environment Information ---"
-          echo "Node version: $(node -v)"
-          echo "Yarn version: $(yarn -v)"
-          echo "npm version: $(npm -v)"
-          echo "Java version:"
+          echo "--- Node version ---"
+          node -v
+          echo "--- Yarn version ---"
+          yarn -v
+          echo "--- npm version ---"
+          npm -v
+          echo "--- Java version ---"
           java -version
-          echo "Xcode version:"
+          echo "--- Xcode version ---"
           xcodebuild -version
-          echo "CocoaPods version: $(pod --version)"
-          echo "Android SDK location: $ANDROID_SDK_ROOT"
-          echo "Ruby version: $(ruby -v)"
-          echo "Gem version: $(gem -v)"
+          echo "--- CocoaPods version ---"
+          pod --version
+          echo "--- Android SDK location ---"
+          echo $ANDROID_SDK_ROOT
 
-      - name: Clean Build Environment
+      - name: Install Dependencies
         script: |
-          echo "--- Cleaning build environment ---"
-          rm -rf node_modules ios android .expo
           npm cache clean --force
-          yarn cache clean || echo "Yarn cache clean failed, continuing..."
-          
-          # Clean CocoaPods cache
-          pod cache clean --all || echo "Pod cache clean failed, continuing..."
-
-      - name: Install Dependencies with Compatibility Check
-        script: |
-          echo "--- Installing dependencies ---"
-          
-          # Install latest Expo CLI globally
-          npm install -g @expo/cli@latest --no-audit --fund=false --omit=optional
-          
-          # Verify Expo CLI installation
-          echo "Expo CLI version: $(npx expo --version)"
-          
-          # Install project dependencies
           yarn install --network-timeout 600000 --ignore-engines
-          
-          # Check current package versions
-          echo "--- Package Information ---"
-          cat package.json | grep -E "(react-native|expo)" || echo "No React Native/Expo packages found in package.json"
-          
-          # Run Expo doctor to check for issues
-          npx expo doctor || echo "Expo doctor completed with warnings"
 
-      - name: Update React Native Version (if needed)
+      - name: Setup Expo CLI
         script: |
-          echo "--- Checking React Native version compatibility ---"
-          
-          # Get current React Native version
-          CURRENT_RN_VERSION=$(cat package.json | grep "react-native" | head -1 | sed 's/.*"react-native": *"[^0-9]*\([^"]*\)".*/\1/')
-          echo "Current React Native version: $CURRENT_RN_VERSION"
-          
-          # Update to latest compatible version if using old version
-          if [[ "$CURRENT_RN_VERSION" < "0.75" ]]; then
-            echo "Updating React Native to latest compatible version..."
-            npx expo install react-native@latest
-            echo "Updated React Native version"
-          else
-            echo "React Native version is compatible, skipping update"
-          fi
+          npm install -g @expo/cli@latest --no-audit --fund=false --omit=optional
+          npx expo --version
 
-      - name: Prebuild with Clean State
+      - name: Build Android (Local)
         script: |
-          echo "--- Running prebuild with clean state ---"
-          
-          # Clean prebuild for both platforms
-          npx expo prebuild --clean --non-interactive --no-install
-          
-          # Verify generated projects
-          echo "--- Verifying generated projects ---"
-          if [ -d "ios" ]; then
-            echo "iOS directory created successfully"
-            ls -la ios/ | head -10
-          else
-            echo "ERROR: iOS directory not found"
-            exit 1
-          fi
-          
-          if [ -d "android" ]; then
-            echo "Android directory created successfully"
-            ls -la android/ | head -10
-          else
-            echo "ERROR: Android directory not found"
-            exit 1
-          fi
-
-      - name: Build Android APK
-        script: |
-          echo "--- Building Android APK ---"
-          
+          echo "--- Building Android APK locally ---"
+          npx expo prebuild --platform android --non-interactive
           cd android
-          
-          # Make gradlew executable
-          chmod +x ./gradlew
-          
-          # Clean previous builds
-          echo "Cleaning previous Android builds..."
-          ./gradlew clean --no-daemon
-          
-          # Build debug APK with detailed logging
-          echo "Building debug APK..."
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace --info --warning-mode all
-          
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
           cd ..
-          
-          # Verify APK was created
-          echo "--- Verifying Android build ---"
-          if [ -f "android/app/build/outputs/apk/debug/app-debug.apk" ]; then
-            echo "✅ Android APK built successfully"
-            ls -lh android/app/build/outputs/apk/debug/app-debug.apk
-          else
-            echo "❌ Android APK not found"
-            echo "Available files in debug directory:"
-            ls -la android/app/build/outputs/apk/debug/ || echo "Debug directory not found"
-            exit 1
-          fi
 
-      - name: Setup iOS Dependencies
+      - name: Build iOS (Local)
         script: |
-          echo "--- Setting up iOS dependencies ---"
-          
+          echo "--- Building iOS Simulator locally ---"
+          npx expo prebuild --platform ios --non-interactive
           cd ios
-          
-          # Update CocoaPods repo
-          echo "Updating CocoaPods repository..."
-          pod repo update --verbose
-          
-          # Install pods with verbose output
-          echo "Installing CocoaPods dependencies..."
           pod install --repo-update --verbose
-          
           cd ..
-          
-          # Verify workspace was created
-          echo "--- Verifying iOS workspace ---"
-          WORKSPACE_PATH=$(find ios -name "*.xcworkspace" -type d | head -1)
-          if [ -n "$WORKSPACE_PATH" ]; then
-            echo "✅ iOS workspace found: $WORKSPACE_PATH"
-            WORKSPACE_NAME=$(basename "$WORKSPACE_PATH")
-            echo "WORKSPACE_NAME=$WORKSPACE_NAME" >> $CM_ENV
-          else
-            echo "❌ iOS workspace not found"
-            echo "Available files in ios directory:"
-            ls -la ios/
-            exit 1
-          fi
-
-      - name: Build iOS for Simulator
-        script: |
-          echo "--- Building iOS for Simulator ---"
-          
-          # Get workspace name from environment or find it
-          if [ -z "$WORKSPACE_NAME" ]; then
-            WORKSPACE_NAME=$(basename "$(find ios -name "*.xcworkspace" -type d | head -1)")
-          fi
-          
-          echo "Using workspace: $WORKSPACE_NAME"
-          echo "Using scheme: $XCODE_SCHEME"
           
           # Build for iOS Simulator
           xcodebuild \
-            -workspace "ios/$WORKSPACE_NAME" \
+            -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath ios/build \
-            -quiet \
             CODE_SIGNING_ALLOWED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            ONLY_ACTIVE_ARCH=YES
+            COMPILER_INDEX_STORE_ENABLE=NO
           
-          # Create simulator app bundle directory
+          # Create simulator app bundle
           mkdir -p ios_simulator_build
-          
-          # Find and copy the built app
-          echo "--- Packaging iOS Simulator build ---"
-          BUILT_APP_PATH=$(find ios/build/Build/Products/Debug-iphonesimulator -name "*.app" -type d | head -1)
-          
-          if [ -n "$BUILT_APP_PATH" ]; then
-            echo "✅ iOS app built successfully: $BUILT_APP_PATH"
-            cp -R "$BUILT_APP_PATH" ios_simulator_build/
-            
-            # Create tar archive for easier download
+          if [ -d "ios/build/Build/Products/Debug-iphonesimulator" ]; then
+            cp -R ios/build/Build/Products/Debug-iphonesimulator/*.app ios_simulator_build/ || echo "No .app found"
+            # Package simulator build for easier download
             cd ios_simulator_build
             tar -czf ../ios-simulator-build.tar.gz *.app
             cd ..
-            
-            echo "iOS simulator build packaged successfully"
-          else
-            echo "❌ iOS app not found in build outputs"
-            echo "Available files in Debug-iphonesimulator:"
-            find ios/build/Build/Products/Debug-iphonesimulator -type f || echo "Debug-iphonesimulator directory not found"
-            exit 1
           fi
 
       - name: Verify Build Artifacts
         script: |
-          echo "--- Final Build Verification ---"
-          
-          echo "=== Android Build Artifacts ==="
-          find . -name "*.apk" -type f -exec ls -lh {} \;
-          
-          echo "=== iOS Build Artifacts ==="
-          find . -name "*.app" -type d -exec ls -ld {} \;
-          find . -name "*.tar.gz" -type f -exec ls -lh {} \;
-          
-          echo "=== Build Summary ==="
-          if [ -f "android/app/build/outputs/apk/debug/app-debug.apk" ]; then
-            echo "✅ Android APK: SUCCESS"
-          else
-            echo "❌ Android APK: FAILED"
-          fi
-          
-          if [ -f "ios-simulator-build.tar.gz" ]; then
-            echo "✅ iOS Simulator Build: SUCCESS"
-          else
-            echo "❌ iOS Simulator Build: FAILED"
-          fi
-          
-          echo "=== Detailed File Listing ==="
-          echo "Android APK directory:"
-          ls -la android/app/build/outputs/apk/debug/ || echo "Android APK directory not found"
-          
-          echo "iOS simulator build directory:"
-          ls -la ios_simulator_build/ || echo "iOS simulator build directory not found"
-          
-          echo "Build logs locations:"
-          find . -name "*.log" -type f | head -10
+          echo "--- Verifying build artifacts ---"
+          echo "Android APK files:"
+          find . -name "*.apk" -type f
+          echo "iOS Simulator builds:"
+          find . -name "*.app" -type d
+          find . -name "*.tar.gz" -type f
+          echo "Build directories:"
+          ls -la android/app/build/outputs/apk/debug/ || echo "No Android debug APK directory"
+          ls -la ios_simulator_build/ || echo "No iOS simulator build directory"
 
     artifacts:
-      # Android artifacts
+      # Local build artifacts
       - android/app/build/outputs/**/*.apk
-      - android/app/build/outputs/**/*.aab
       - android/app/build/**/*.log
-      
-      # iOS artifacts
       - ios_simulator_build/*.app
       - ios-simulator-build.tar.gz
+      # Build logs
       - ios/build/**/*.log
-      
-      # General build logs
-      - "**/*.log"
       - build_logs/**
-      
-      # Expo and Metro logs
-      - .expo/**/*.log
 
     publishing:
       email:
