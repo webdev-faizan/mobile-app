@@ -45,14 +45,6 @@ workflows:
           xcode-select --install || true
           sudo xcodebuild -license accept || true
 
-      - name: Verify Ruby Installation
-        script: |
-          if ! ruby -v | grep "3.1.4"; then
-            echo "❌ Ruby installation failed!"
-            exit 1
-          fi
-          gem install bundler
-
       - name: Install Dependencies
         script: |
           echo "--- Cleaning caches ---"
