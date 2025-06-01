@@ -27,18 +27,15 @@ workflows:
     scripts:
       - name: Setup Environment
         script: |
-          echo "--- Node version ---"
-          node -v
-          echo "--- Yarn version ---"
-          yarn -v
-          echo "--- npm version ---"
-          npm -v
-          echo "--- Xcode version ---"
-          xcodebuild -version
-          echo "--- Ruby version ---"
-          ruby -v
-          echo "--- CocoaPods version ---"
-          pod --version
+          echo "--- System Setup ---"
+          echo "Node version: $(node -v)"
+          echo "Yarn version: $(yarn -v)"
+          echo "npm version: $(npm -v)"
+          echo "Xcode version: $(xcodebuild -version)"
+          echo "Ruby version: $(ruby -v)"
+          echo "CocoaPods version: $(pod --version)"
+          echo "--- Installing jq for JSON parsing ---"
+          brew install jq
 
       - name: Install Dependencies
         script: |
@@ -70,40 +67,48 @@ workflows:
           echo "--- Building iOS Development Archive ---"
           cd ios
 
-          # Detect actual project/workspace and scheme
-          WORKSPACE=$(ls *.xcworkspace 2>/dev/null | head -n 1)
-          PROJECT=$(ls *.xcodeproj 2>/dev/null | head -n 1)
+          # Detect project/workspace
+          WORKSPACE=$(find . -maxdepth 1 -name '*.xcworkspace' -print -quit)
+          PROJECT=$(find . -maxdepth 1 -name '*.xcodeproj' -print -quit)
 
           if [ -n "$WORKSPACE" ]; then
-            SCHEME=$(basename "$WORKSPACE" .xcworkspace)
             echo "Found workspace: $WORKSPACE"
-            echo "Detected scheme: $SCHEME"
+            SCHEME=$(xcodebuild -workspace "$WORKSPACE" -list -json | jq -r '.workspace.schemes[0]')
+            echo "Using scheme: $SCHEME"
+            
             xcodebuild -workspace "$WORKSPACE" \
               -scheme "$SCHEME" \
               -configuration Debug \
               -sdk iphonesimulator \
               -derivedDataPath build \
               clean build
+            
           elif [ -n "$PROJECT" ]; then
-            SCHEME=$(basename "$PROJECT" .xcodeproj)
             echo "Found project: $PROJECT"
-            echo "Detected scheme: $SCHEME"
+            SCHEME=$(xcodebuild -project "$PROJECT" -list -json | jq -r '.project.schemes[0]')
+            echo "Using scheme: $SCHEME"
+            
             xcodebuild -project "$PROJECT" \
               -scheme "$SCHEME" \
               -configuration Debug \
               -sdk iphonesimulator \
               -derivedDataPath build \
               clean build
+            
           else
-            echo "❌ No .xcworkspace or .xcodeproj found!"
+            echo "❌ Error: No .xcworkspace or .xcodeproj found in ios directory!"
+            ls -la
             exit 1
           fi
 
-          cd ..
+          echo "--- Build products ---"
+          find build -type d -name "*.app" -exec du -sh {} \;
           echo "--- iOS Build Complete ---"
+          cd ..
 
     artifacts:
       - ios/build/**/*.xcarchive
+      - ios/build/**/*.app
       - ios/build/**/*.log
 
     publishing:
