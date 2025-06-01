@@ -9,7 +9,6 @@ workflows:
         XCODE_SCHEME: "simple-ios-todo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
         BUILD_NUMBER: "1"
-        # Pass OpenSSL location so Ruby can find it
         RUBY_CONFIGURE_OPTS: "--with-openssl-dir=$(brew --prefix openssl@3)"
       node: 20
       xcode: 15.0
@@ -39,6 +38,10 @@ workflows:
           echo "--- Installing system dependencies ---"
           brew update
           brew install openssl@3 readline libyaml gmp
+          brew link openssl@3 --force
+          echo "--- OpenSSL paths ---"
+          ls -la $(brew --prefix openssl@3)/lib
+          ls -la $(brew --prefix openssl@3)/include
           brew cleanup
           # Ensure Xcode command line tools are installed and license accepted
           xcode-select --install || true
@@ -47,8 +50,17 @@ workflows:
       - name: Install Ruby 3.1.4
         script: |
           echo "--- Installing Ruby 3.1.4 with OpenSSL path ---"
-          export RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3)"
-          rbenv install -s 3.1.4
+          export RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3) --with-opt-dir=$(brew --prefix openssl@3)"
+          export LDFLAGS="-L$(brew --prefix openssl@3)/lib"
+          export CPPFLAGS="-I$(brew --prefix openssl@3)/include"
+          export PKG_CONFIG_PATH="$(brew --prefix openssl@3)/lib/pkgconfig"
+          echo "RUBY_CONFIGURE_OPTS: $RUBY_CONFIGURE_OPTS"
+          echo "LDFLAGS: $LDFLAGS"
+          echo "CPPFLAGS: $CPPFLAGS"
+          rbenv install -s 3.1.4 || {
+            echo "--- Build failed, trying with verbose output ---"
+            rbenv install -v 3.1.4
+          }
           rbenv global 3.1.4
           ruby -v
 
