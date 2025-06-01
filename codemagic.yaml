@@ -11,7 +11,6 @@ workflows:
         BUILD_NUMBER: "1"
       node: 22
       xcode: 15.0
-      # ruby: 3.4.4
       cocoapods: 1.14.2
 
     cache:
@@ -43,33 +42,8 @@ workflows:
           ls -la $(brew --prefix openssl@3)/lib
           ls -la $(brew --prefix openssl@3)/include
           brew cleanup
-          # Xcode setup
           xcode-select --install || true
           sudo xcodebuild -license accept || true
-
-      # - name: Install Ruby 3.1.4 (ARM64 Optimized)
-      #   script: |
-      #     echo "--- Installing Ruby 3.1.4 for M1 ---"
-      #     export CC=/usr/bin/gcc
-      #     export RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3) --with-opt-dir=$(brew --prefix openssl@3)"
-      #     export LDFLAGS="-L$(brew --prefix openssl@3)/lib -arch arm64"
-      #     export CPPFLAGS="-I$(brew --prefix openssl@3)/include"
-      #     export PKG_CONFIG_PATH="$(brew --prefix openssl@3)/lib/pkgconfig"
-      #     export RUBY_CFLAGS="-Wno-error=implicit-function-declaration"
-      #     export archflags="-arch arm64"
-
-      #     echo "Compiler: $CC"
-      #     echo "Configure opts: $RUBY_CONFIGURE_OPTS"
-      #     echo "LDFLAGS: $LDFLAGS"
-          
-      #     rbenv install 3.1.4 -v || {
-      #       echo "--- Fallback attempt with different settings ---"
-      #       export RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3) --disable-install-doc"
-      #       rbenv install 3.1.4 -v
-      #     }
-          
-      #     rbenv global 3.1.4
-      #     ruby -v
 
       - name: Verify Ruby Installation
         script: |
@@ -104,7 +78,6 @@ workflows:
           echo "--- Updating CocoaPods ---"
           gem install cocoapods -v 1.14.2 --user-install
           pod setup --verbose
-          echo "--- Pod environment ---"
           pod env
 
       - name: Pod Installation (ARM64 Optimized)
@@ -113,15 +86,10 @@ workflows:
           cd ios
           pod cache clean --all
           rm -rf Pods Podfile.lock
-          echo "--- Podfile Content ---"
           cat Podfile || echo "No Podfile found"
-          
-          echo "--- Installing Pods (M1 optimized) ---"
           export GEM_HOME=$HOME/.gem
           export PATH=$GEM_HOME/bin:$PATH
           arch -arm64 pod install --repo-update --verbose
-          
-          echo "--- Pods directory ---"
           ls -la Pods/
           cd ..
 
@@ -151,7 +119,7 @@ workflows:
     artifacts:
       - build/export/*.ipa
       - build_logs/**/*
-      
+
     publishing:
       email:
         recipients:
