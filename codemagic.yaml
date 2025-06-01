@@ -44,12 +44,42 @@ workflows:
           echo "--- CocoaPods version ---"
           pod --version
 
+      - name: Setup Xcode and CocoaPods
+        script: |
+          echo "--- Selecting full Xcode developer directory ---"
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          echo "--- Verifying xcode-select path ---"
+          xcode-select -p
+
+          echo "--- Installing/Updating CocoaPods gem ---"
+          sudo gem install cocoapods
+
+          # If you want to use Homebrew instead, comment above and uncomment below:
+          # echo "--- Uninstalling CocoaPods gem (if present) ---"
+          # sudo gem uninstall cocoapods || true
+          # echo "--- Installing CocoaPods via Homebrew ---"
+          # brew install cocoapods
+          # echo "--- Linking CocoaPods binaries (if needed) ---"
+          # brew link --overwrite cocoapods
+
+          echo "--- Verifying CocoaPods version ---"
+          pod --version
+
       - name: Install Dependencies
         script: |
           echo "--- Cleaning npm cache ---"
           npm cache clean --force
           echo "--- Installing Yarn dependencies ---"
           yarn install --network-timeout 600000 --ignore-engines
+
+      - name: Install Pods
+        script: |
+          echo "--- Removing ios/Pods and node_modules folders ---"
+          rm -rf ios/Pods node_modules
+          echo "--- Installing Pods ---"
+          cd ios
+          pod install --repo-update --allow-root
+          cd ..
 
       - name: Setup EAS CLI
         script: |
@@ -58,12 +88,6 @@ workflows:
           echo "--- EAS CLI version ---"
           npx eas-cli --version
 
-      - name: Install Pods
-        script: |
-         cd ios
-         pod install --repo-update
-         cd ..
-         
       - name: Expo Prebuild
         script: |
           echo "--- Generating iOS Native Code ---"
