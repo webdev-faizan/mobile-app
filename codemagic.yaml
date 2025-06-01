@@ -1,120 +1,42 @@
 workflows:
-  expo-ios-development:
-    name: Expo iOS Development Build
-    instance_type: mac_mini_m1
-    working_directory: .
+  ios-prebuild:
+    name: Expo iOS without Expo login
     environment:
       vars:
-        XCODE_WORKSPACE: "ios/simple-ios-todo.xcworkspace"
-        XCODE_SCHEME: "simple-ios-todo"
+        APP_NAME: "simple-ios-todo"
+        SCHEME: "simpleiostodo"
+        WORKSPACE: "ios/simpleiostodo.xcworkspace"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
-        BUILD_NUMBER: "1"
-      node: 22
-      xcode: 15.0
-      cocoapods: 1.14.2
-
-    cache:
-      cache_paths:
-        - ~/Library/Caches/CocoaPods
-        - ios/Pods
-        - node_modules
-        - .yarn/cache
-        - .yarn/install-state.gz
-        - .yarn/unplugged
-
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: "master*"
-          include: true
-          source: true
-
+      node: 18
+      xcode: latest
     scripts:
-      - name: System Dependencies
+      - name: Install dependencies
         script: |
-          echo "--- Installing system dependencies ---"
-          brew update
-          brew install openssl@3 readline libyaml gmp gcc
-          brew link openssl@3 --force
-          echo "--- Compiler and OpenSSL info ---"
-          which gcc
-          ls -la $(brew --prefix openssl@3)/lib
-          ls -la $(brew --prefix openssl@3)/include
-          brew cleanup
-          xcode-select --install || true
-          sudo xcodebuild -license accept || true
-
-      - name: Install Dependencies
+          npm ci
+      - name: Convert Expo to bare React Native project
         script: |
-          echo "--- Cleaning caches ---"
-          npm cache clean --force
-          yarn cache clean
-          echo "--- Installing dependencies ---"
-          yarn install --network-timeout 600000 --frozen-lockfile
-
-      - name: EAS CLI Setup
+          npx expo prebuild --platform ios --clean --no-install
+      - name: Install CocoaPods
         script: |
-          npm install -g eas-cli@latest
-          eas --version
-
-      - name: Expo Prebuild
+          cd ios && pod install && cd ..
+      - name: Build iOS app with Xcode
         script: |
-          echo "--- Generating native code ---"
-          npx expo prebuild --platform ios --non-interactive
-          echo "--- iOS directory structure ---"
-          ls -la ios/
-
-      - name: CocoaPods Setup
-        script: |
-          echo "--- Updating CocoaPods ---"
-          gem install cocoapods -v 1.14.2 --user-install
-          pod setup --verbose
-          pod env
-
-      - name: Pod Installation (ARM64 Optimized)
-        script: |
-          echo "--- Preparing Pods ---"
-          cd ios
-          pod cache clean --all
-          rm -rf Pods Podfile.lock
-          cat Podfile || echo "No Podfile found"
-          export GEM_HOME=$HOME/.gem
-          export PATH=$GEM_HOME/bin:$PATH
-          arch -arm64 pod install --repo-update --verbose
-          ls -la Pods/
-          cd ..
-
-      - name: Xcode Build (ARM64)
-        script: |
-          echo "--- Building archive ---"
-          mkdir -p build
-          xcodebuild archive \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -sdk iphoneos \
             -configuration Release \
-            -archivePath build/simple-ios-todo.xcarchive \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=YES \
-            ARCHS=arm64
-
-          echo "--- Exporting IPA ---"
+            archive -archivePath $CM_BUILD_DIR/$SCHEME.xcarchive
+      - name: Export IPA
+        script: |
           xcodebuild -exportArchive \
-            -archivePath build/simple-ios-todo.xcarchive \
-            -exportOptionsPlist ios/exportOptions.plist \
-            -exportPath build/export \
-            ARCHS=arm64
-
-          echo "--- Build artifacts ---"
-          ls -la build/export/
-
+            -archivePath $CM_BUILD_DIR/$SCHEME.xcarchive \
+            -exportOptionsPlist ios/ExportOptions.plist \
+            -exportPath $CM_BUILD_DIR/exported
     artifacts:
-      - build/export/*.ipa
-      - build_logs/**/*
-
+      - $CM_BUILD_DIR/exported/*.ipa
+      - $CM_BUILD_DIR/exported/*.dSYM.zip
     publishing:
       email:
         recipients:
-          - webdev.faizanali@gmail.com
-      slack:
-        channel: "#build-notifications"
+          - your_email@example.com
