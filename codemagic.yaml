@@ -6,6 +6,8 @@ workflows:
     environment:
       xcode: 15.4
       java: 17
+      node: 20
+
     cache:
       cache_paths:
         - $HOME/Library/Caches/CocoaPods
