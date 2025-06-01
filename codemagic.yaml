@@ -11,7 +11,7 @@ workflows:
         BUILD_NUMBER: "1"
       node: 22
       xcode: 15.0
-      ruby: 3.4.4
+      # ruby: 3.4.4
       cocoapods: 1.14.2
 
     cache:
