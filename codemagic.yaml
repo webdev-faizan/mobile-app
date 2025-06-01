@@ -13,7 +13,7 @@ workflows:
       xcode: 15.1
       cocoapods: default
     cli:
-  version: latest
+      version: latest
 
 build:
   ios:
