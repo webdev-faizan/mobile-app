@@ -10,7 +10,7 @@ workflows:
         BUNDLE_ID: "com.anonymous.simpleiostodo"
         BUILD_NUMBER: "1"
       node: 20
-      xcode: 15.0
+      xcode: 15.1
       cocoapods: default
 
     cache:
