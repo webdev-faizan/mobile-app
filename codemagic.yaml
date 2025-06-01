@@ -76,23 +76,28 @@ workflows:
 
           echo "Found Xcode project: $XCODE_PROJ"
 
+          # Clean previous build
+          rm -rf build_output
+          mkdir -p build_output
+
           # Build without specifying scheme
           xcodebuild \
             -configuration Debug \
             -sdk iphonesimulator \
-            -derivedDataPath build \
+            -derivedDataPath build_output \
             -destination 'platform=iOS Simulator,name=iPhone 15' \
             clean build
 
           echo "--- Build products ---"
-          find build -type d -name "*.app" -exec du -sh {} \;
+          find build_output -type d -name "*.app" -exec du -sh {} \;
           echo "--- iOS Build Complete ---"
           cd ..
 
     artifacts:
-      - ios/build/**/*.app
-      - ios/build/**/*.dSYM
-      - ios/build/**/*.log
+      - ios/build_output/Build/**/*.app
+      - ios/build_output/Build/**/*.dSYM
+      - ios/build_output/Build/**/*.log
+      - ios/build_output/Logs/**/*.log
 
     publishing:
       email:
