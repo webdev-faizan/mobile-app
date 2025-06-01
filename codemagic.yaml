@@ -57,18 +57,7 @@ workflows:
           cd ..
 
       # ────────────────────────────────────────────────────────────────
-      # 3) Expo Prebuild → generate iOS/Android native projects
-      # ────────────────────────────────────────────────────────────────
-      - name: Expo Prebuild (iOS)
-        script: |
-          echo "--- Generating iOS native code from Expo config ---"
-          # CI=1 is already set globally in `environment.vars`
-          npx expo prebuild --platform ios
-          echo "--- Prebuild finished, listing ios/ folder: ---"
-          ls -la ios/
-
-      # ────────────────────────────────────────────────────────────────
-      # 4) Install JS Dependencies + CocoaPods
+      # 3) Install JS Dependencies + CocoaPods
       # ────────────────────────────────────────────────────────────────
       - name: Install Dependencies
         script: |
@@ -78,21 +67,31 @@ workflows:
           echo "--- Installing CocoaPods dependencies ---"
           cd ios
 
-          # 4a) clear Boost (and all) from CocoaPods cache to avoid checksum mismatch
+          # 3a) clear Boost (and all) from CocoaPods cache to avoid checksum mismatch
           pod cache clean boost --all || true
           pod cache clean --all || true
 
-          # 4b) force a fresh repo update, then install
+          # 3b) force a fresh repo update, then install
           pod repo update
           pod install --repo-update --clean-install
 
-          # 4c) check workspace existence (pod install should have generated .xcworkspace)
+          # 3c) check workspace existence (pod install should have generated .xcworkspace)
           if [ -d "simpleiostodo.xcworkspace" ]; then
             echo "✅ CocoaPods workspace created: simpleiostodo.xcworkspace"
           else
             echo "❗ WARNING: no .xcworkspace found, proceeding with .xcodeproj"
           fi
           cd ..
+
+      # ────────────────────────────────────────────────────────────────
+      # 4) Expo Prebuild → generate iOS/Android native projects
+      # ────────────────────────────────────────────────────────────────
+      - name: Expo Prebuild (iOS)
+        script: |
+          echo "--- Generating iOS native code from Expo config ---"
+          npx expo prebuild --platform ios
+          echo "--- Prebuild finished, listing ios/ folder: ---"
+          ls -la ios/
 
       # ────────────────────────────────────────────────────────────────
       # 5) Archive (Release) + Export IPA
@@ -102,7 +101,6 @@ workflows:
           echo "--- Starting Xcode archive for Release build ---"
           cd ios
 
-          # Detect whether workspace exists, else use the .xcodeproj directly:
           if [ -d "simpleiostodo.xcworkspace" ]; then
             BUILD_TARGET="-workspace simpleiostodo.xcworkspace"
           else
@@ -122,7 +120,6 @@ workflows:
             | tee build/xcode_archive.log
 
           echo "--- Exporting .xcarchive to .ipa using ExportOptions.plist ---"
-          # Assumes ExportOptions.plist is in the project root. Adjust path if needed:
           xcodebuild \
             -exportArchive \
             -archivePath build/simpleiostodo.xcarchive \
@@ -130,13 +127,12 @@ workflows:
             -exportPath build \
             | tee build/xcode_export.log
 
-          # Show produced IPA (or Payload folder) for debugging:
           echo "--- Contents of build/ after export: ---"
           ls -la build/
           cd ..
 
       # ────────────────────────────────────────────────────────────────
-      # 6) (Optional) Run any unit tests or post-build verifications here
+      # 6) (Optional) Run unit tests or post-build checks
       # ────────────────────────────────────────────────────────────────
       # - name: Run iOS Tests
       #   script: |
@@ -151,7 +147,6 @@ workflows:
       #     cd ..
 
     artifacts:
-      # Collect the final .ipa (or Payload folder) as a build artifact
       - ios/build/*.ipa
       - ios/build/Payload
       - ios/build/xcode_export.log
