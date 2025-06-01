@@ -1726,15 +1726,15 @@
   resolved "https://registry.yarnpkg.com/@react-native-community/masked-view/-/masked-view-0.1.11.tgz#2f4c6e10bee0786abff4604e39a37ded6f3980ce"
   integrity sha512-rQfMIGSR/1r/SyN87+VD8xHHzDYeHaJq6elOSCAD+0iLagXkSI2pfA0LmSXP21uw5i3em7GkkRjfJ8wpqWXZNw==
 
-"@react-native/assets-registry@0.80.0-nightly-20250401-ad8be9ada":
-  version "0.80.0-nightly-20250401-ad8be9ada"
-  resolved "https://registry.yarnpkg.com/@react-native/assets-registry/-/assets-registry-0.80.0-nightly-20250401-ad8be9ada.tgz#3402f8527fbca9be710fbb58c2b9902c632967f1"
-  integrity sha512-5luGIxzYOwZcv/OYghL8uX+v/nfZA/ghjVxF58b+kyfuHoXEEaQ6ZG+LMimInJE4eHQH7Y3XZPU88XyPKYsyvA==
+"@react-native/assets-registry@0.79.2":
+  version "0.79.2"
+  resolved "https://registry.yarnpkg.com/@react-native/assets-registry/-/assets-registry-0.79.2.tgz#731963e664c8543f5b277e56c058bde612b69f50"
+  integrity sha512-5h2Z7/+/HL/0h88s0JHOdRCW4CXMCJoROxqzHqxdrjGL6EBD1DdaB4ZqkCOEVSW4Vjhir5Qb97C8i/MPWEYPtg==
 
-"@react-native/codegen@0.80.0-nightly-20250401-ad8be9ada":
-  version "0.80.0-nightly-20250401-ad8be9ada"
-  resolved "https://registry.yarnpkg.com/@react-native/codegen/-/codegen-0.80.0-nightly-20250401-ad8be9ada.tgz#3731d1da18e83f821c70fa1e36e62f9a37dccf98"
-  integrity sha512-yNFXfN/O5oPgowQggh65JrUNUT/JAaGYiyH63AYaHesi1TiXcW6jXNSiJE8TBloXdHIQCQtfD2qtDe9tJ47Csg==
+"@react-native/codegen@0.79.2":
+  version "0.79.2"
+  resolved "https://registry.yarnpkg.com/@react-native/codegen/-/codegen-0.79.2.tgz#75270d8162e78c02b0272396a3c6942e39e8703d"
+  integrity sha512-8JTlGLuLi1p8Jx2N/enwwEd7/2CfrqJpv90Cp77QLRX3VHF2hdyavRIxAmXMwN95k+Me7CUuPtqn2X3IBXOWYg==
   dependencies:
     glob "^7.1.1"
     hermes-parser "0.25.1"
@@ -1742,66 +1742,66 @@
     nullthrows "^1.1.1"
     yargs "^17.6.2"
 
-"@react-native/community-cli-plugin@0.80.0-nightly-20250401-ad8be9ada":
-  version "0.80.0-nightly-20250401-ad8be9ada"
-  resolved "https://registry.yarnpkg.com/@react-native/community-cli-plugin/-/community-cli-plugin-0.80.0-nightly-20250401-ad8be9ada.tgz#5ea992992565319aa792c5eb93eba8b8e580ada2"
-  integrity sha512-ZCN8pEN6bALkYV1HF7L80Mnbmxtp1CyqyWalxDbG4BJG2oJl9BkQKLsURbB/+SDQurMgYOfFTB/hKhTxlkRLoQ==
+"@react-native/community-cli-plugin@0.79.2":
+  version "0.79.2"
+  resolved "https://registry.yarnpkg.com/@react-native/community-cli-plugin/-/community-cli-plugin-0.79.2.tgz#d3a0efbdfb554cf3a7e9bfb27865a7caeeeaa1b3"
+  integrity sha512-E+YEY2dL+68HyR2iahsZdyBKBUi9QyPyaN9vsnda1jNgCjNpSPk2yAF5cXsho+zKK5ZQna3JSeE1Kbi2IfGJbw==
   dependencies:
-    "@react-native/dev-middleware" "0.80.0-nightly-20250401-ad8be9ada"
+    "@react-native/dev-middleware" "0.79.2"
     chalk "^4.0.0"
-    debug "^4.4.0"
+    debug "^2.2.0"
     invariant "^2.2.4"
     metro "^0.82.0"
     metro-config "^0.82.0"
     metro-core "^0.82.0"
     semver "^7.1.3"
 
-"@react-native/debugger-frontend@0.80.0-nightly-20250401-ad8be9ada":
-  version "0.80.0-nightly-20250401-ad8be9ada"
-  resolved "https://registry.yarnpkg.com/@react-native/debugger-frontend/-/debugger-frontend-0.80.0-nightly-20250401-ad8be9ada.tgz#b4b74ead0185c6f49c2d1bac54610388776d9744"
-  integrity sha512-AZB7jXIM06XFRu6E8vCtm+6x3NteWDSGX/QdYm8tY1wcQ01ngOc8lcfVlNXb9gYvzdHipTqiSrQDpaDqGIc6aQ==
+"@react-native/debugger-frontend@0.79.2":
+  version "0.79.2"
+  resolved "https://registry.yarnpkg.com/@react-native/debugger-frontend/-/debugger-frontend-0.79.2.tgz#1377de6d9cabe5455bf332e06408167da5f60c19"
+  integrity sha512-cGmC7X6kju76DopSBNc+PRAEetbd7TWF9J9o84hOp/xL3ahxR2kuxJy0oJX8Eg8oehhGGEXTuMKHzNa3rDBeSg==
 
-"@react-native/dev-middleware@0.80.0-nightly-20250401-ad8be9ada":
-  version "0.80.0-nightly-20250401-ad8be9ada"
-  resolved "https://registry.yarnpkg.com/@react-native/dev-middleware/-/dev-middleware-0.80.0-nightly-20250401-ad8be9ada.tgz#a915921f2b66556d7e228cd847f2a1cc42bb10c4"
-  integrity sha512-fhS/mO3XDm5VSSGWXbusMy/yyHZxwFw4s7ZvmkTLW/dGpA603by830nRhK/Fnhu0WLTzBAY+/rSUPTcpftsX+A==
+"@react-native/dev-middleware@0.79.2":
+  version "0.79.2"
+  resolved "https://registry.yarnpkg.com/@react-native/dev-middleware/-/dev-middleware-0.79.2.tgz#f09f1a75b4cd0b56dfd82a07bf41157a9c45619c"
+  integrity sha512-9q4CpkklsAs1L0Bw8XYCoqqyBSrfRALGEw4/r0EkR38Y/6fVfNfdsjSns0pTLO6h0VpxswK34L/hm4uK3MoLHw==
   dependencies:
     "@isaacs/ttlcache" "^1.4.1"
-    "@react-native/debugger-frontend" "0.80.0-nightly-20250401-ad8be9ada"
+    "@react-native/debugger-frontend" "0.79.2"
     chrome-launcher "^0.15.2"
     chromium-edge-launcher "^0.2.0"
     connect "^3.6.5"
-    debug "^4.4.0"
+    debug "^2.2.0"
     invariant "^2.2.4"
     nullthrows "^1.1.1"
     open "^7.0.3"
     serve-static "^1.16.2"
     ws "^6.2.3"
 
-"@react-native/gradle-plugin@0.80.0-nightly-20250401-ad8be9ada":
-  version "0.80.0-nightly-20250401-ad8be9ada"
-  resolved "https://registry.yarnpkg.com/@react-native/gradle-plugin/-/gradle-plugin-0.80.0-nightly-20250401-ad8be9ada.tgz#c1823e320845cd4e56533e6c2d24811bf6f44710"
-  integrity sha512-xDTSi8+5ZIl9KJgbbEjG9Ps4XVe+8tSU0ZCn8h6zjYuYWqNaILT4K5y9NtNKkroiWXqzIDOqtjTyMqHY0RRHCw==
+"@react-native/gradle-plugin@0.79.2":
+  version "0.79.2"
+  resolved "https://registry.yarnpkg.com/@react-native/gradle-plugin/-/gradle-plugin-0.79.2.tgz#d41d4e2c63baf688a2b47652c6260f2a2f1ec091"
+  integrity sha512-6MJFemrwR0bOT0QM+2BxX9k3/pvZQNmJ3Js5pF/6owsA0cUDiCO57otiEU8Fz+UywWEzn1FoQfOfQ8vt2GYmoA==
 
-"@react-native/js-polyfills@0.80.0-nightly-20250401-ad8be9ada":
-  version "0.80.0-nightly-20250401-ad8be9ada"
-  resolved "https://registry.yarnpkg.com/@react-native/js-polyfills/-/js-polyfills-0.80.0-nightly-20250401-ad8be9ada.tgz#587f458c4e651affdc27dc55813f83cd227ee3d9"
-  integrity sha512-m02r4Ycxp9J7sjpp4K428Prrfa3qdTM7iO6lapgG9ZOxqsrlEY6ekg06H0ee9fieXzZbZIv4xbh6hjVyKlF2Ag==
+"@react-native/js-polyfills@0.79.2":
+  version "0.79.2"
+  resolved "https://registry.yarnpkg.com/@react-native/js-polyfills/-/js-polyfills-0.79.2.tgz#15eb4da0fe9e8d61d2980d08fd06b5f49e133b0f"
+  integrity sha512-IaY87Ckd4GTPMkO1/Fe8fC1IgIx3vc3q9Tyt/6qS3Mtk9nC0x9q4kSR5t+HHq0/MuvGtu8HpdxXGy5wLaM+zUw==
 
 "@react-native/normalize-color@^2.0.0":
   version "2.1.0"
   resolved "https://registry.yarnpkg.com/@react-native/normalize-color/-/normalize-color-2.1.0.tgz#939b87a9849e81687d3640c5efa2a486ac266f91"
   integrity sha512-Z1jQI2NpdFJCVgpY+8Dq/Bt3d+YUi1928Q+/CZm/oh66fzM0RUl54vvuXlPJKybH4pdCZey1eDTPaLHkMPNgWA==
 
-"@react-native/normalize-colors@0.80.0-nightly-20250401-ad8be9ada":
-  version "0.80.0-nightly-20250401-ad8be9ada"
-  resolved "https://registry.yarnpkg.com/@react-native/normalize-colors/-/normalize-colors-0.80.0-nightly-20250401-ad8be9ada.tgz#427469b3e38a95b985dbc1093a3409478242dd51"
-  integrity sha512-cYyOivaKr7HFA3C2WVqk2idQBBtkqn2YPkk3BnpNV9NJJSCXnVprsMjqH1ZpZaIenBlHBPxYqFi0Ipj84VceTA==
+"@react-native/normalize-colors@0.79.2":
+  version "0.79.2"
+  resolved "https://registry.yarnpkg.com/@react-native/normalize-colors/-/normalize-colors-0.79.2.tgz#9ab70ca257c7411e4ab74cf7f91332c27d39cc6f"
+  integrity sha512-+b+GNrupWrWw1okHnEENz63j7NSMqhKeFMOyzYLBwKcprG8fqJQhDIGXfizKdxeIa5NnGSAevKL1Ev1zJ56X8w==
 
-"@react-native/virtualized-lists@0.80.0-nightly-20250401-ad8be9ada":
-  version "0.80.0-nightly-20250401-ad8be9ada"
-  resolved "https://registry.yarnpkg.com/@react-native/virtualized-lists/-/virtualized-lists-0.80.0-nightly-20250401-ad8be9ada.tgz#c2d74e5e35236fb71ffe7783f0684ca8b41b5620"
-  integrity sha512-4rXPBXZMgvBP2TC3ScaflOstchF9PU6P2g3EcyhgrNTE9OynQgkblWw+qiLtdMh4QtEy4gYJRk7bhucmX/eRMw==
+"@react-native/virtualized-lists@0.79.2":
+  version "0.79.2"
+  resolved "https://registry.yarnpkg.com/@react-native/virtualized-lists/-/virtualized-lists-0.79.2.tgz#ed5a419a30b7ddec978b7816ff698a9d85507e15"
+  integrity sha512-9G6ROJeP+rdw9Bvr5ruOlag11ET7j1z/En1riFFNo6W3xZvJY+alCuH1ttm12y9+zBm4n8jwCk4lGhjYaV4dKw==
   dependencies:
     invariant "^2.2.4"
     nullthrows "^1.1.1"
@@ -3539,7 +3539,7 @@ data-view-byte-offset@^1.0.1:
     es-errors "^1.3.0"
     is-data-view "^1.0.1"
 
-debug@2.6.9, debug@^2.6.9:
+debug@2.6.9, debug@^2.2.0, debug@^2.6.9:
   version "2.6.9"
   resolved "https://registry.yarnpkg.com/debug/-/debug-2.6.9.tgz#5d128515df134ff327e90a4c93f4e077a536341f"
   integrity sha512-bC7ElrdJaJnPbAP+1EotYvqZsb3ecl5wi6Bfi6BJTUcNowp6cvspg0jXznRTKDjm/E7AdgFBVeAPVMNcKGsHMA==
@@ -7403,19 +7403,19 @@ react-native-web@~0.18.10:
     postcss-value-parser "^4.2.0"
     styleq "^0.1.2"
 
-react-native@0.73.14:
-  version "0.80.0-nightly-20250401-ad8be9ada"
-  resolved "https://registry.yarnpkg.com/react-native/-/react-native-0.80.0-nightly-20250401-ad8be9ada.tgz#87f5f921d2a096c76338e41409e61b3f54f7e3b2"
-  integrity sha512-eNR7ur55qRuANf0hBS1sH0ygd1PDRPKa+AE1YH84hnWRN9Rb5d22t9HG1d2/8P328PZrXYhNePiKJXrLSmwV+A==
+react-native@0.79.2:
+  version "0.79.2"
+  resolved "https://registry.yarnpkg.com/react-native/-/react-native-0.79.2.tgz#f1a53099701c1736d09e441eb79f97cfc90dd202"
+  integrity sha512-AnGzb56JvU5YCL7cAwg10+ewDquzvmgrMddiBM0GAWLwQM/6DJfGd2ZKrMuKKehHerpDDZgG+EY64gk3x3dEkw==
   dependencies:
     "@jest/create-cache-key-function" "^29.7.0"
-    "@react-native/assets-registry" "0.80.0-nightly-20250401-ad8be9ada"
-    "@react-native/codegen" "0.80.0-nightly-20250401-ad8be9ada"
-    "@react-native/community-cli-plugin" "0.80.0-nightly-20250401-ad8be9ada"
-    "@react-native/gradle-plugin" "0.80.0-nightly-20250401-ad8be9ada"
-    "@react-native/js-polyfills" "0.80.0-nightly-20250401-ad8be9ada"
-    "@react-native/normalize-colors" "0.80.0-nightly-20250401-ad8be9ada"
-    "@react-native/virtualized-lists" "0.80.0-nightly-20250401-ad8be9ada"
+    "@react-native/assets-registry" "0.79.2"
+    "@react-native/codegen" "0.79.2"
+    "@react-native/community-cli-plugin" "0.79.2"
+    "@react-native/gradle-plugin" "0.79.2"
+    "@react-native/js-polyfills" "0.79.2"
+    "@react-native/normalize-colors" "0.79.2"
+    "@react-native/virtualized-lists" "0.79.2"
     abort-controller "^3.0.0"
     anser "^1.4.9"
     ansi-regex "^5.0.0"
@@ -9267,6 +9267,11 @@ yargs@^17.6.2:
     string-width "^4.2.3"
     y18n "^5.0.5"
     yargs-parser "^21.1.1"
+
+yarn@^1.22.22:
+  version "1.22.22"
+  resolved "https://registry.yarnpkg.com/yarn/-/yarn-1.22.22.tgz#ac34549e6aa8e7ead463a7407e1c7390f61a6610"
+  integrity sha512-prL3kGtyG7o9Z9Sv8IPfBNrWTDmXB4Qbes8A9rEzt6wkJV8mUvoirjU0Mp3GGAU06Y0XQyA3/2/RQFVuK7MTfg==
 
 yocto-queue@^0.1.0:
   version "0.1.0"
