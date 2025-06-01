@@ -72,14 +72,18 @@ workflows:
           echo "--- Installing Yarn dependencies ---"
           yarn install --network-timeout 600000 --ignore-engines
 
-      - name: Install Pods
-        script: |
-          echo "--- Removing ios/Pods and node_modules folders ---"
-          rm -rf ios/Pods node_modules
-          echo "--- Installing Pods ---"
-          cd ios
-          pod install --repo-update --allow-root
-          cd ..
+          echo "--- Ensuring expo is installed ---"
+          yarn add expo
+
+
+      # - name: Install Pods
+      #   script: |
+      #     echo "--- Removing ios/Pods and node_modules folders ---"
+      #     rm -rf ios/Pods node_modules
+      #     echo "--- Installing Pods ---"
+      #     cd ios
+      #     pod install --repo-update --allow-root
+      #     cd ..
 
       - name: Setup EAS CLI
         script: |
@@ -91,9 +95,15 @@ workflows:
       - name: Expo Prebuild
         script: |
           echo "--- Generating iOS Native Code ---"
-          npx expo prebuild --platform ios --non-interactive
+          CI=1 npx expo prebuild --platform ios
           echo "--- Prebuild contents verification ---"
           ls -la ios/
+          if [ -d "ios" ]; then
+          echo "✅ iOS folder exists"
+           ls -la ios/
+            else
+             echo "❌ iOS folder does not exist"
+              fi
 
     #   - name: Install CocoaPods
     #     script: |
