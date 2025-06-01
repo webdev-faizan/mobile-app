@@ -17,11 +17,10 @@ import Icon from "react-native-vector-icons/FontAwesome";
 import { MarkdownView } from "react-native-markdown-view";
 import * as FileSystem from "expo-file-system";
 import * as DocumentPicker from "expo-document-picker";
-import { Dimensions } from 'react-native';
-const { width } = Dimensions.get('window');
+import { Dimensions } from "react-native";
+const { width } = Dimensions.get("window");
 import * as Sharing from "expo-sharing";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
 
 export const ChatApp = () => {
   const colorScheme = useColorScheme();
@@ -36,6 +35,11 @@ export const ChatApp = () => {
   const [showChatOptions, setShowChatOptions] = useState(null);
   const [showProfileOptions, setShowProfileOptions] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  const handleLogout = async () => {
+    await AsyncStorage.clear();
+    navigation.navigate("Login");
+  };
 
   // Theme colors
   const colors = {
@@ -812,6 +816,7 @@ export const ChatApp = () => {
                     <Icon name="sign-out" size={14} color="#ff4444" />
                   </View>
                   <Text
+                    onPress={handleLogout}
                     style={[styles.profileOptionText, { color: "#ff4444" }]}
                   >
                     Logout

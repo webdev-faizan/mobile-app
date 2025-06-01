@@ -3,6 +3,7 @@ import { View, TouchableOpacity, Text, StyleSheet, Image } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useNavigation } from "@react-navigation/native";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -13,12 +14,15 @@ export const LoginScreen = ({}) => {
   const [userInfo, setUserInfo] = useState(null);
 
   const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: "798408118819-ghbt8n8qmrqpsmpmggafp35relrg5305.apps.googleusercontent.com",
+    androidClientId:
+      "798408118819-ghbt8n8qmrqpsmpmggafp35relrg5305.apps.googleusercontent.com",
     iosClientId:
       "798408118819-gdgovoqvpdaehc86reta5t0r2v01p2l6.apps.googleusercontent.com",
     webClientId:
       "798408118819-pmjvsf9ivs248u6s4abmppagml1vml45.apps.googleusercontent.com",
   });
+
+  const navigation = useNavigation();
 
   useEffect(() => {
     handleEffect();
@@ -30,8 +34,10 @@ export const LoginScreen = ({}) => {
     if (!user) {
       if (response?.type === "success") {
         getUserInfo(response.authentication.accessToken);
+        navigation.navigate("Chatbot");
       }
     } else {
+      navigation.navigate("Chatbot");
       setUserInfo(user);
       console.log("loaded locally");
     }
