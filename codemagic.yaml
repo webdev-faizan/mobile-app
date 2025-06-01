@@ -31,7 +31,7 @@ workflows:
         - pattern: "master*"
           include: true
           source: true
-
+    
     scripts:
       - name: Setup Environment
         script: |
@@ -45,6 +45,18 @@ workflows:
           xcodebuild -version
           echo "--- CocoaPods version ---"
           pod --version
+
+      - name: Make bash script executable
+    script: |
+      echo "--- Making bash scripts executable ---"
+      chmod +x ./*.bash
+      chmod +x ./build-ios.sh  # Also make your existing build script executable
+      ls -la *.bash  # Verify permissions
+
+      - name: Run custom bash script
+    script: |
+      echo "--- Running custom bash script ---"
+      ./setup_environment.bash  # Or whatever your bash file is named
 
       - name: Setup Xcode and CocoaPods
         script: |
