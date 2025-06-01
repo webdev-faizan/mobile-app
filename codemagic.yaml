@@ -9,8 +9,7 @@ workflows:
         XCODE_SCHEME: "simple-ios-todo"
         BUNDLE_ID: "com.anonymous.simpleiostodo"
         BUILD_NUMBER: "1"
-        RUBY_CONFIGURE_OPTS: "--with-openssl-dir=$(brew --prefix openssl@3)"
-      node: 20
+      node: 22
       xcode: 15.0
       ruby: 3.1.4
       cocoapods: 1.14.2
@@ -37,37 +36,45 @@ workflows:
         script: |
           echo "--- Installing system dependencies ---"
           brew update
-          brew install openssl@3 readline libyaml gmp
+          brew install openssl@3 readline libyaml gmp gcc
           brew link openssl@3 --force
-          echo "--- OpenSSL paths ---"
+          echo "--- Compiler and OpenSSL info ---"
+          which gcc
           ls -la $(brew --prefix openssl@3)/lib
           ls -la $(brew --prefix openssl@3)/include
           brew cleanup
-          # Ensure Xcode command line tools are installed and license accepted
+          # Xcode setup
           xcode-select --install || true
           sudo xcodebuild -license accept || true
 
-      - name: Install Ruby 3.1.4
+      - name: Install Ruby 3.1.4 (ARM64 Optimized)
         script: |
-          echo "--- Installing Ruby 3.1.4 with OpenSSL path ---"
+          echo "--- Installing Ruby 3.1.4 for M1 ---"
+          export CC=/usr/bin/gcc
           export RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3) --with-opt-dir=$(brew --prefix openssl@3)"
-          export LDFLAGS="-L$(brew --prefix openssl@3)/lib"
+          export LDFLAGS="-L$(brew --prefix openssl@3)/lib -arch arm64"
           export CPPFLAGS="-I$(brew --prefix openssl@3)/include"
           export PKG_CONFIG_PATH="$(brew --prefix openssl@3)/lib/pkgconfig"
-          echo "RUBY_CONFIGURE_OPTS: $RUBY_CONFIGURE_OPTS"
+          export RUBY_CFLAGS="-Wno-error=implicit-function-declaration"
+          export archflags="-arch arm64"
+
+          echo "Compiler: $CC"
+          echo "Configure opts: $RUBY_CONFIGURE_OPTS"
           echo "LDFLAGS: $LDFLAGS"
-          echo "CPPFLAGS: $CPPFLAGS"
-          rbenv install -s 3.1.4 || {
-            echo "--- Build failed, trying with verbose output ---"
-            rbenv install -v 3.1.4
+          
+          rbenv install 3.1.4 -v || {
+            echo "--- Fallback attempt with different settings ---"
+            export RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@3) --disable-install-doc"
+            rbenv install 3.1.4 -v
           }
+          
           rbenv global 3.1.4
           ruby -v
 
       - name: Verify Ruby Installation
         script: |
-          if ! ruby -v; then
-            echo "Ruby installation failed!"
+          if ! ruby -v | grep "3.1.4"; then
+            echo "❌ Ruby installation failed!"
             exit 1
           fi
           gem install bundler
@@ -95,12 +102,12 @@ workflows:
       - name: CocoaPods Setup
         script: |
           echo "--- Updating CocoaPods ---"
-          sudo gem install cocoapods -v 1.14.2
+          gem install cocoapods -v 1.14.2 --user-install
           pod setup --verbose
           echo "--- Pod environment ---"
           pod env
 
-      - name: Pod Installation
+      - name: Pod Installation (ARM64 Optimized)
         script: |
           echo "--- Preparing Pods ---"
           cd ios
@@ -108,13 +115,17 @@ workflows:
           rm -rf Pods Podfile.lock
           echo "--- Podfile Content ---"
           cat Podfile || echo "No Podfile found"
-          echo "--- Installing Pods ---"
-          pod install --repo-update --verbose
+          
+          echo "--- Installing Pods (M1 optimized) ---"
+          export GEM_HOME=$HOME/.gem
+          export PATH=$GEM_HOME/bin:$PATH
+          arch -arm64 pod install --repo-update --verbose
+          
           echo "--- Pods directory ---"
           ls -la Pods/
           cd ..
 
-      - name: Xcode Build
+      - name: Xcode Build (ARM64)
         script: |
           echo "--- Building archive ---"
           mkdir -p build
@@ -124,13 +135,15 @@ workflows:
             -configuration Release \
             -archivePath build/simple-ios-todo.xcarchive \
             -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=YES
+            CODE_SIGNING_ALLOWED=YES \
+            ARCHS=arm64
 
           echo "--- Exporting IPA ---"
           xcodebuild -exportArchive \
             -archivePath build/simple-ios-todo.xcarchive \
             -exportOptionsPlist ios/exportOptions.plist \
-            -exportPath build/export
+            -exportPath build/export \
+            ARCHS=arm64
 
           echo "--- Build artifacts ---"
           ls -la build/export/
