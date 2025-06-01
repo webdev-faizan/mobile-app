@@ -7,6 +7,7 @@ workflows:
       vars:
         BUILD_NUMBER: "1"
       node: 20
+      # java not required for iOS builds, but can keep if needed
       java: 17
 
     cache:
@@ -27,15 +28,18 @@ workflows:
     scripts:
       - name: Setup Environment
         script: |
-          echo "--- System Setup ---"
-          echo "Node version: $(node -v)"
-          echo "Yarn version: $(yarn -v)"
-          echo "npm version: $(npm -v)"
-          echo "Xcode version: $(xcodebuild -version)"
-          echo "Ruby version: $(ruby -v)"
-          echo "CocoaPods version: $(pod --version)"
-          echo "--- Creating artifacts directory ---"
-          mkdir -p ios/build_artifacts
+          echo "--- Node version ---"
+          node -v
+          echo "--- Yarn version ---"
+          yarn -v
+          echo "--- npm version ---"
+          npm -v
+          echo "--- Xcode version ---"
+          xcodebuild -version
+          echo "--- Ruby version ---"
+          ruby -v
+          echo "--- CocoaPods version ---"
+          pod --version
 
       - name: Install Dependencies
         script: |
@@ -62,53 +66,23 @@ workflows:
           echo "--- Prebuild contents verification ---"
           ls -la ios/
 
-      - name: Build iOS App
+      - name: Build iOS Development Archive
         script: |
-          echo "--- Building iOS App ---"
+          echo "--- Building iOS Development Archive ---"
           cd ios
-
-          # Clean previous builds
-          rm -rf build
-          mkdir -p build
-
-          # Find project file
-          PROJECT_FILE=$(find . -maxdepth 1 \( -name '*.xcworkspace' -o -name '*.xcodeproj' \) -print -quit)
-          [ -z "$PROJECT_FILE" ] && { echo "❌ No Xcode project found"; ls -la; exit 1; }
-          echo "Using project file: $PROJECT_FILE"
-
-          # Build command
-          if [[ $PROJECT_FILE == *.xcworkspace ]]; then
-            xcodebuild -workspace "$PROJECT_FILE" \
-              -configuration Debug \
-              -sdk iphonesimulator \
-              -derivedDataPath build \
-              -destination 'platform=iOS Simulator,name=iPhone 15' \
-              clean build
-          else
-            xcodebuild -project "$PROJECT_FILE" \
-              -configuration Debug \
-              -sdk iphonesimulator \
-              -derivedDataPath build \
-              -destination 'platform=iOS Simulator,name=iPhone 15' \
-              clean build
-          fi
-
-          # Collect artifacts
-          echo "--- Collecting build artifacts ---"
-          find build -name "*.app" -exec cp -R {} build_artifacts \;
-          find build -name "*.dSYM" -exec cp -R {} build_artifacts \;
-          find build -name "*.log" -exec cp {} build_artifacts \;
-          
-          # Verify artifacts
-          echo "--- Artifacts collected ---"
-          ls -lh build_artifacts
-          echo "--- Build directory structure ---"
-          find build -type f | head -50
-          echo "--- iOS Build Complete ---"
+          xcodebuild -workspace simpleiostodo.xcworkspace \
+            -scheme simpleiostodo \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            clean build
           cd ..
+          echo "--- iOS Build Complete ---"
+
+      # Optional: upload artifacts or export IPA, you can integrate EAS build if preferred.
 
     artifacts:
-      - ios/build_artifacts/**/*
+      - ios/build/**/*.xcarchive
       - ios/build/**/*.log
 
     publishing:
