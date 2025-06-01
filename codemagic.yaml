@@ -65,11 +65,13 @@ workflows:
           echo "--- Prebuild contents verification ---"
           ls -la ios/
 
-      - name: Install CocoaPods
+      - name: Fix ffi and Pod Architecture Compatibility
         script: |
-          echo "--- Installing Pods ---"
+          echo "--- Installing ffi for Intel architecture ---"
+          sudo arch -x86_64 gem install ffi
+          echo "--- Installing Pods (Intel arch) ---"
           cd ios
-          pod install --repo-update --verbose
+          arch -x86_64 pod install --repo-update --verbose
           cd ..
           echo "--- Pods directory contents ---"
           ls -la ios/Pods/
@@ -87,7 +89,6 @@ workflows:
             COMPILER_INDEX_STORE_ENABLE=NO \
             | xcpretty
 
-          # Fallback detailed logs if needed
           if [ $? -ne 0 ]; then
             echo "--- Fallback: Detailed build logs ---"
             xcodebuild \
